@@ -1,0 +1,21 @@
+# voices:
+# 芊悦 / Cherry
+# 晨煦 / Ethan
+# 不吃鱼 / Nofish
+# 詹妮弗 / Jennifer
+# 甜茶 / Ryan
+# 卡捷琳娜 / Katerina
+# 墨讲师 / Elias
+# 上海-阿珍 / Jada
+# 北京-晓东 / Dylan
+# 四川-晴儿 / Sunny
+# 南京-老李 / li
+# 陕西-秦川 / Marcus
+# 闽南-阿杰 / Roy
+# 天津-李彼得 / Peter
+# 粤语-阿强 / Rocky
+# 粤语-阿清 / Kiki
+# 四川-程川 / Eric
+
+# languages:
+# 中文、英语、法语、德语、俄语、意大利语、西班牙语、葡萄牙语、日语、韩语

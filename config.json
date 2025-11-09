@@ -1,0 +1,18 @@
+{
+  "tts": {
+    "provider": "dashscope",
+    "api_key": "sk-9943685fcf6548d19f31b992f4678d57",
+    "model": "qwen3-tts-flash",
+    "voice": "Ethan",
+    "language_type": "Chinese",
+    "ext": "wav"
+  },
+  "write_mode": "replace",
+  "append_separator": "<br>",
+  "filename_template": "tts_{nid}_{field}.{ext}",
+  "batch": {
+    "skip_if_source_empty": true,
+    "skip_if_target_has_sound": false,
+    "overwrite": true
+  }
+}
