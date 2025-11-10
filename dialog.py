@@ -25,6 +25,12 @@ from .anki_helpers import (
 from .media_utils import add_media_bytes, update_note
 from .tts_provider import synthesize_tts_bytes
 from .text_utils import strip_html, safe_filename_from_text, render_sound_tag
+from .voice_utils import (
+    get_voices_and_languages,
+    get_voice_display_name,
+    language_display_to_api_format,
+    api_format_to_language_display
+)
 
 
 # Qt5/Qt6 compatibility for header enums
@@ -51,6 +57,8 @@ class TTSDialog(QDialog):
         self.model_combo = QComboBox(self)
         self.source_field_combo = QComboBox(self)
         self.target_field_combo = QComboBox(self)
+        self.voice_combo = QComboBox(self)
+        self.language_combo = QComboBox(self)
 
         cfg = get_config()
         self.overwrite_chk = QCheckBox("Overwrite audio (replace target field content)", self)
@@ -82,6 +90,8 @@ class TTSDialog(QDialog):
         form.addRow("Note type:", self.model_combo)
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
+        form.addRow("Voice:", self.voice_combo)
+        form.addRow("Language:", self.language_combo)
         form.addRow("Overwrite:", self.overwrite_chk)
 
         top = QVBoxLayout(self)
@@ -105,14 +115,21 @@ class TTSDialog(QDialog):
         qconnect(self.clear_btn.clicked, self._clear_queue)
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
+        qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
+        qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
 
         # Queue state
         self.jobs: List[Dict] = []
         self._queue_running = False
 
+        # Voice/language data
+        self.voices_data = []
+        self.languages_data = []
+
         # Populate
         self._load_decks()
         self._load_models()
+        self._load_voices_and_languages()
         self._select_current_deck()
         self._on_model_changed()
 
@@ -178,6 +195,61 @@ class TTSDialog(QDialog):
 
         sel(self.source_field_combo, ["Back", "Text", "Expression", "Front"])
         sel(self.target_field_combo, ["Audio", "Pronunciation", "BackAudio", "Sound", "AudioBack"])
+
+    def _load_voices_and_languages(self):
+        """Load voices and languages from voices.txt file."""
+        self.voices_data, self.languages_data = get_voices_and_languages()
+
+        # Populate voice combo box
+        self.voice_combo.clear()
+        for voice in self.voices_data:
+            display_name = get_voice_display_name(voice)
+            self.voice_combo.addItem(display_name, voice['english'])
+
+        # Populate language combo box
+        self.language_combo.clear()
+        for lang in self.languages_data:
+            self.language_combo.addItem(lang, language_display_to_api_format(lang))
+
+        # Select current voice and language from config
+        cfg = get_config()
+        tts_cfg = cfg.get("tts", {})
+        current_voice = tts_cfg.get("voice", "Ethan")
+        current_language_api = tts_cfg.get("language_type", "Chinese")
+
+        # Find and select the current voice
+        for i in range(self.voice_combo.count()):
+            if self.voice_combo.itemData(i) == current_voice:
+                self.voice_combo.setCurrentIndex(i)
+                break
+
+        # Find and select the current language
+        for i in range(self.language_combo.count()):
+            if self.language_combo.itemData(i) == current_language_api:
+                self.language_combo.setCurrentIndex(i)
+                break
+
+    def _on_voice_changed(self):
+        """Handle voice selection change."""
+        voice_english = self.voice_combo.currentData()
+        if voice_english:
+            # Update config
+            cfg = mw.addonManager.getConfig(__name__) or {}
+            if "tts" not in cfg:
+                cfg["tts"] = {}
+            cfg["tts"]["voice"] = voice_english
+            mw.addonManager.writeConfig(__name__, cfg)
+
+    def _on_language_changed(self):
+        """Handle language selection change."""
+        language_api = self.language_combo.currentData()
+        if language_api:
+            # Update config
+            cfg = mw.addonManager.getConfig(__name__) or {}
+            if "tts" not in cfg:
+                cfg["tts"] = {}
+            cfg["tts"]["language_type"] = language_api
+            mw.addonManager.writeConfig(__name__, cfg)
 
     def _append_job_row(self, text: str, state: str) -> int:
         """Add a new job row to the table."""
