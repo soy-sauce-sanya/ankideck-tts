@@ -6,12 +6,13 @@ from aqt import mw
 
 DEFAULT_CONFIG = {
     "tts": {
-        "provider": "dashscope",
+        "provider": "dashscope",  # "dashscope" or "openai"
         "api_key": "",
-        "model": "qwen3-tts-flash",
-        "voice": "Ethan",
-        "language_type": "Chinese",
-        "ext": "wav"
+        "model": "qwen3-tts-flash",  # For OpenAI use "tts-1" or "tts-1-hd"
+        "voice": "Ethan",  # For OpenAI use "alloy", "echo", "fable", "onyx", "nova", "shimmer"
+        "language_type": "Chinese",  # Only used by DashScope/Qwen
+        "speed": 1.0,  # Only used by OpenAI (0.25 to 4.0)
+        "ext": "wav"  # For OpenAI use "mp3"
     },
     "write_mode": "append",
     "append_separator": "<br>",

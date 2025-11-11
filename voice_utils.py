@@ -4,20 +4,21 @@
 from __future__ import annotations
 from typing import List, Tuple, Dict
 from pathlib import Path
+import re
 
 
-def parse_voices_file(file_path: str) -> Tuple[List[Dict[str, str]], List[str]]:
+def parse_voices_file(file_path: str) -> Tuple[Dict[str, List[Dict[str, str]]], List[str]]:
     """Parse voices.txt to extract available voices and languages.
 
     Args:
         file_path: Path to the voices.txt file
 
     Returns:
-        Tuple of (voices_list, languages_list) where:
-        - voices_list is a list of dicts with 'chinese' and 'english' keys
+        Tuple of (voices_dict, languages_list) where:
+        - voices_dict is a dict mapping provider names to lists of voice dicts
         - languages_list is a list of language strings
     """
-    voices = []
+    voices_by_provider = {}
     languages = []
 
     try:
@@ -26,6 +27,7 @@ def parse_voices_file(file_path: str) -> Tuple[List[Dict[str, str]], List[str]]:
 
         in_voices = False
         in_languages = False
+        current_provider = None
 
         for line in lines:
             line = line.strip()
@@ -35,11 +37,30 @@ def parse_voices_file(file_path: str) -> Tuple[List[Dict[str, str]], List[str]]:
                 continue
 
             # Check for section markers
-            if line.startswith('# voices:'):
+            # Match: # voices: or # voices (ProviderName):
+            voices_match = re.match(r'#\s*voices\s*(?:\(([^)]+)\))?:', line, re.IGNORECASE)
+            if voices_match:
                 in_voices = True
                 in_languages = False
+                # Extract provider name from parentheses, or default to "dashscope"
+                provider_text = voices_match.group(1)
+                if provider_text:
+                    # Normalize provider name (e.g., "DashScope/Qwen" -> "dashscope", "OpenAI" -> "openai")
+                    provider_lower = provider_text.lower()
+                    if 'openai' in provider_lower:
+                        current_provider = 'openai'
+                    elif 'dashscope' in provider_lower or 'qwen' in provider_lower:
+                        current_provider = 'dashscope'
+                    else:
+                        current_provider = 'dashscope'
+                else:
+                    current_provider = 'dashscope'
+
+                if current_provider not in voices_by_provider:
+                    voices_by_provider[current_provider] = []
                 continue
-            elif line.startswith('# languages:'):
+
+            if line.startswith('# languages:'):
                 in_voices = False
                 in_languages = True
                 continue
@@ -48,13 +69,13 @@ def parse_voices_file(file_path: str) -> Tuple[List[Dict[str, str]], List[str]]:
             if line.startswith('#') and '/' not in line and '、' not in line:
                 continue
 
-            # Parse voices (format: # 芊悦 / Cherry)
-            if in_voices and line.startswith('#'):
+            # Parse voices (format: # 芊悦 / Cherry or # Alloy / alloy)
+            if in_voices and line.startswith('#') and current_provider:
                 parts = line[1:].strip().split('/')
                 if len(parts) == 2:
                     chinese_name = parts[0].strip()
                     english_name = parts[1].strip()
-                    voices.append({
+                    voices_by_provider[current_provider].append({
                         'chinese': chinese_name,
                         'english': english_name
                     })
@@ -65,11 +86,11 @@ def parse_voices_file(file_path: str) -> Tuple[List[Dict[str, str]], List[str]]:
                 languages.extend([lang.strip() for lang in langs if lang.strip()])
 
     except Exception as e:
-        # Return empty lists on error
+        # Return empty dicts/lists on error
         print(f"Error parsing voices file: {e}")
-        return [], []
+        return {}, []
 
-    return voices, languages
+    return voices_by_provider, languages
 
 
 def get_voice_display_name(voice: Dict[str, str]) -> str:
@@ -84,8 +105,12 @@ def get_voice_display_name(voice: Dict[str, str]) -> str:
     return f"{voice['chinese']} ({voice['english']})"
 
 
-def get_voices_and_languages() -> Tuple[List[Dict[str, str]], List[str]]:
+def get_voices_and_languages(provider: str = None) -> Tuple[List[Dict[str, str]], List[str]]:
     """Get available voices and languages from the voices.txt file.
+
+    Args:
+        provider: Optional provider name to filter voices (e.g., "dashscope", "openai")
+                 If None, returns all voices from all providers.
 
     Returns:
         Tuple of (voices_list, languages_list)
@@ -97,7 +122,34 @@ def get_voices_and_languages() -> Tuple[List[Dict[str, str]], List[str]]:
     if not voices_file.exists():
         return [], []
 
-    return parse_voices_file(str(voices_file))
+    voices_by_provider, languages = parse_voices_file(str(voices_file))
+
+    # If provider is specified, return only voices for that provider
+    if provider:
+        voices = voices_by_provider.get(provider.lower(), [])
+    else:
+        # Return all voices from all providers
+        voices = []
+        for provider_voices in voices_by_provider.values():
+            voices.extend(provider_voices)
+
+    return voices, languages
+
+
+def get_all_voices_by_provider() -> Dict[str, List[Dict[str, str]]]:
+    """Get all voices organized by provider.
+
+    Returns:
+        Dictionary mapping provider names to lists of voice dicts
+    """
+    addon_dir = Path(__file__).resolve().parent
+    voices_file = addon_dir / "voices.txt"
+
+    if not voices_file.exists():
+        return {}
+
+    voices_by_provider, _ = parse_voices_file(str(voices_file))
+    return voices_by_provider
 
 
 def language_display_to_api_format(display_name: str) -> str:

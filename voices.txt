@@ -1,4 +1,4 @@
-# voices:
+# voices (DashScope/Qwen):
 # 芊悦 / Cherry
 # 晨煦 / Ethan
 # 不吃鱼 / Nofish
@@ -16,6 +16,14 @@
 # 粤语-阿强 / Rocky
 # 粤语-阿清 / Kiki
 # 四川-程川 / Eric
+
+# voices (OpenAI):
+# Alloy / alloy
+# Echo / echo
+# Fable / fable
+# Onyx / onyx
+# Nova / nova
+# Shimmer / shimmer
 
 # languages:
 # 中文、英语、法语、德语、俄语、意大利语、西班牙语、葡萄牙语、日语、韩语
