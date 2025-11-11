@@ -57,6 +57,7 @@ class TTSDialog(QDialog):
         self.model_combo = QComboBox(self)
         self.source_field_combo = QComboBox(self)
         self.target_field_combo = QComboBox(self)
+        self.provider_combo = QComboBox(self)
         self.voice_combo = QComboBox(self)
         self.language_combo = QComboBox(self)
 
@@ -90,6 +91,7 @@ class TTSDialog(QDialog):
         form.addRow("Note type:", self.model_combo)
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
+        form.addRow("TTS Provider:", self.provider_combo)
         form.addRow("Voice:", self.voice_combo)
         form.addRow("Language:", self.language_combo)
         form.addRow("Overwrite:", self.overwrite_chk)
@@ -115,6 +117,7 @@ class TTSDialog(QDialog):
         qconnect(self.clear_btn.clicked, self._clear_queue)
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
+        qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
 
@@ -129,6 +132,7 @@ class TTSDialog(QDialog):
         # Populate
         self._load_decks()
         self._load_models()
+        self._load_providers()
         self._load_voices_and_languages()
         self._select_current_deck()
         self._on_model_changed()
@@ -171,6 +175,20 @@ class TTSDialog(QDialog):
         for name, mid in all_model_names_and_ids():
             self.model_combo.addItem(name, mid)
 
+    def _load_providers(self):
+        """Load TTS providers into the provider combo box."""
+        self.provider_combo.clear()
+        self.provider_combo.addItem("DashScope/Qwen", "dashscope")
+        self.provider_combo.addItem("OpenAI", "openai")
+
+        # Select current provider from config
+        cfg = get_config()
+        current_provider = cfg.get("tts", {}).get("provider", "dashscope")
+        for i in range(self.provider_combo.count()):
+            if self.provider_combo.itemData(i) == current_provider:
+                self.provider_combo.setCurrentIndex(i)
+                break
+
     def _on_model_changed(self):
         """Update field combos when model selection changes."""
         self.source_field_combo.clear()
@@ -197,8 +215,12 @@ class TTSDialog(QDialog):
         sel(self.target_field_combo, ["Audio", "Pronunciation", "BackAudio", "Sound", "AudioBack"])
 
     def _load_voices_and_languages(self):
-        """Load voices and languages from voices.txt file."""
-        self.voices_data, self.languages_data = get_voices_and_languages()
+        """Load voices and languages from voices.txt file based on selected provider."""
+        # Get selected provider
+        provider = self.provider_combo.currentData() or "dashscope"
+
+        # Load voices for the selected provider
+        self.voices_data, self.languages_data = get_voices_and_languages(provider=provider)
 
         # Populate voice combo box
         self.voice_combo.clear()
@@ -206,15 +228,20 @@ class TTSDialog(QDialog):
             display_name = get_voice_display_name(voice)
             self.voice_combo.addItem(display_name, voice['english'])
 
-        # Populate language combo box
+        # Populate language combo box (only for DashScope)
         self.language_combo.clear()
-        for lang in self.languages_data:
-            self.language_combo.addItem(lang, language_display_to_api_format(lang))
+        if provider == "dashscope":
+            for lang in self.languages_data:
+                self.language_combo.addItem(lang, language_display_to_api_format(lang))
+            self.language_combo.setEnabled(True)
+        else:
+            # OpenAI doesn't use language selection, hide/disable it
+            self.language_combo.setEnabled(False)
 
         # Select current voice and language from config
         cfg = get_config()
         tts_cfg = cfg.get("tts", {})
-        current_voice = tts_cfg.get("voice", "Ethan")
+        current_voice = tts_cfg.get("voice", "Ethan" if provider == "dashscope" else "alloy")
         current_language_api = tts_cfg.get("language_type", "Chinese")
 
         # Find and select the current voice
@@ -223,11 +250,26 @@ class TTSDialog(QDialog):
                 self.voice_combo.setCurrentIndex(i)
                 break
 
-        # Find and select the current language
-        for i in range(self.language_combo.count()):
-            if self.language_combo.itemData(i) == current_language_api:
-                self.language_combo.setCurrentIndex(i)
-                break
+        # Find and select the current language (if applicable)
+        if provider == "dashscope":
+            for i in range(self.language_combo.count()):
+                if self.language_combo.itemData(i) == current_language_api:
+                    self.language_combo.setCurrentIndex(i)
+                    break
+
+    def _on_provider_changed(self):
+        """Handle provider selection change."""
+        provider = self.provider_combo.currentData()
+        if provider:
+            # Update config
+            cfg = mw.addonManager.getConfig(__name__) or {}
+            if "tts" not in cfg:
+                cfg["tts"] = {}
+            cfg["tts"]["provider"] = provider
+            mw.addonManager.writeConfig(__name__, cfg)
+
+            # Reload voices and languages for the new provider
+            self._load_voices_and_languages()
 
     def _on_voice_changed(self):
         """Handle voice selection change."""
