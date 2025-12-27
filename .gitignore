@@ -9,6 +9,9 @@ build/
 develop-eggs/
 dist/
 downloads/
+vendor_build/
+.venv/
+__pycache__/
 eggs/
 .eggs/
 lib/
