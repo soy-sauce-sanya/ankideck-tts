@@ -11,7 +11,7 @@ dist/
 downloads/
 vendor_build/
 .venv/
-__pycache__/
+__pycache__
 eggs/
 .eggs/
 lib/
@@ -23,17 +23,17 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
+*.json
 # OS files
 .DS_Store
 Thumbs.db
+.python-version
 
 # Virtual environments
 .venv/
