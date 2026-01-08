@@ -201,7 +201,7 @@ class TTSDialog(QDialog):
 
     def _load_voices_and_languages(self):
         """Load voices and languages from voices.txt file."""
-        provider = self.provider_combo.currentData() or "dashscope"
+        provider = self.provider_combo.currentData() or cfg.get("tts", {}).get("provider", "dashscope")
         self.voices_data, self.languages_data = get_provider_voices_and_languages(provider)
 
         # Populate voice combo box
