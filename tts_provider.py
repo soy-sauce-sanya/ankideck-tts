@@ -80,6 +80,15 @@ def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, s
         return None, f"{e}"
 
 
+def _resolve_api_key(tts: dict, provider: str) -> str:
+    api_keys = tts.get("api_keys") or {}
+    if isinstance(api_keys, dict):
+        api_key = api_keys.get(provider)
+        if api_key:
+            return api_key
+    return tts.get("api_key") or ""
+
+
 def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
     """Synthesize text to audio using DashScope TTS API.
 
@@ -94,10 +103,10 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     """
     tts = cfg.get("tts") or {}
     provider = (tts.get("provider") or "dashscope").lower()
-    api_key = tts.get("api_key") or ""
+    api_key = _resolve_api_key(tts, provider)
 
     if not api_key:
-        return None, "API key (tts.api_key) is not set in add-on config."
+        return None, "API key (tts.api_key or tts.api_keys.<provider>) is not set in add-on config."
 
     if provider == "openai":
         return _synthesize_openai_tts(text, tts, api_key)
@@ -112,7 +121,7 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
     model = tts.get("model") or "qwen3-tts-flash"
     voice = tts.get("voice") or "Cherry"
     lang = tts.get("language_type") or "Chinese"
-    api_key = tts.get("api_key") or ""
+    api_key = api_key or tts.get("api_key") or ""
 
     if importlib.util.find_spec("dashscope") is None:
         return None, "Module 'dashscope' is not installed in Anki's environment."
@@ -144,7 +153,7 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
 
 
 def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
-    api_key = tts.get("api_key") or ""
+    api_key = api_key or tts.get("api_key") or ""
     model = tts.get("model") or "gpt-4o-mini-tts"
     voice = tts.get("voice") or "alloy"
     response_format = tts.get("response_format") or (tts.get("ext") or "mp3")
