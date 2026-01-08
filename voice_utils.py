@@ -84,6 +84,16 @@ def get_voice_display_name(voice: Dict[str, str]) -> str:
     return f"{voice['chinese']} ({voice['english']})"
 
 
+OPENAI_VOICES = [
+    {"chinese": "Alloy", "english": "alloy"},
+    {"chinese": "Echo", "english": "echo"},
+    {"chinese": "Fable", "english": "fable"},
+    {"chinese": "Onyx", "english": "onyx"},
+    {"chinese": "Nova", "english": "nova"},
+    {"chinese": "Shimmer", "english": "shimmer"},
+]
+
+
 def get_voices_and_languages() -> Tuple[List[Dict[str, str]], List[str]]:
     """Get available voices and languages from the voices.txt file.
 
@@ -98,6 +108,20 @@ def get_voices_and_languages() -> Tuple[List[Dict[str, str]], List[str]]:
         return [], []
 
     return parse_voices_file(str(voices_file))
+
+
+def get_provider_voices_and_languages(provider: str) -> Tuple[List[Dict[str, str]], List[str]]:
+    """Get available voices and languages for a specific provider.
+
+    Args:
+        provider: TTS provider identifier (e.g., "dashscope", "openai")
+
+    Returns:
+        Tuple of (voices_list, languages_list)
+    """
+    if (provider or "").lower() == "openai":
+        return OPENAI_VOICES, []
+    return get_voices_and_languages()
 
 
 def language_display_to_api_format(display_name: str) -> str:

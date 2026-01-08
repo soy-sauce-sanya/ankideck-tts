@@ -2,7 +2,11 @@
 """TTS synthesis provider for AnkiDeck TTS addon."""
 
 from __future__ import annotations
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Dict
+import importlib.util
+import json
+import urllib.request
+import urllib.error
 
 
 def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
@@ -16,38 +20,64 @@ def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]]
         Tuple of (data, error_message). If successful, data is bytes and error is None.
         If failed, data is None and error is a string describing the error.
     """
-    try:
+    if importlib.util.find_spec("requests"):
         import requests
-        with requests.get(url, stream=True, timeout=120) as r:
-            if int(r.status_code) != 200:
-                return None, f"HTTP {r.status_code}"
-            total = int(r.headers.get("Content-Length") or 0)
-            chunks = []
-            downloaded = 0
-            for chunk in r.iter_content(chunk_size=8192):
-                if not chunk:
-                    continue
-                chunks.append(chunk)
-                downloaded += len(chunk)
+        try:
+            with requests.get(url, stream=True, timeout=120) as r:
+                if int(r.status_code) != 200:
+                    return None, f"HTTP {r.status_code}"
+                total = int(r.headers.get("Content-Length") or 0)
+                chunks = []
+                downloaded = 0
+                for chunk in r.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                    if on_progress and total:
+                        pct = int(downloaded * 100 / total)
+                        on_progress(min(pct, 100))
+                data = b"".join(chunks)
                 if on_progress and total:
-                    pct = int(downloaded * 100 / total)
-                    on_progress(min(pct, 100))
-            data = b"".join(chunks)
-            if on_progress and total:
+                    on_progress(100)
+                return data, None
+        except Exception as e:
+            return None, f"{e}"
+    try:
+        with urllib.request.urlopen(url, timeout=120) as resp:
+            if int(resp.status) != 200:
+                return None, f"HTTP {resp.status}"
+            data = resp.read()
+            if on_progress:
                 on_progress(100)
             return data, None
     except Exception as e:
+        return None, f"{e}"
+
+
+def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, str]) -> Tuple[Optional[bytes], Optional[str]]:
+    if importlib.util.find_spec("requests"):
+        import requests
         try:
-            import urllib.request
-            with urllib.request.urlopen(url, timeout=120) as resp:
-                if int(resp.status) != 200:
-                    return None, f"HTTP {resp.status}"
-                data = resp.read()
-                if on_progress:
-                    on_progress(100)
-                return data, None
-        except Exception as e2:
-            return None, f"{e2}"
+            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        except Exception as e:
+            return None, f"{e}"
+        if int(resp.status_code) != 200:
+            return None, f"HTTP {resp.status_code}: {resp.text}"
+        return resp.content, None
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            if int(resp.status) != 200:
+                return None, f"HTTP {resp.status}"
+            return resp.read(), None
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        return None, f"HTTP {e.code}: {err_body}"
+    except Exception as e:
+        return None, f"{e}"
 
 
 def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
@@ -63,18 +93,31 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
         If failed, audio_bytes is None and error is a string describing the error.
     """
     tts = cfg.get("tts") or {}
+    provider = (tts.get("provider") or "dashscope").lower()
     api_key = tts.get("api_key") or ""
-    model = tts.get("model") or "qwen3-tts-flash"
-    voice = tts.get("voice") or "Cherry"
-    lang = tts.get("language_type") or "Chinese"
 
     if not api_key:
         return None, "API key (tts.api_key) is not set in add-on config."
 
-    try:
-        import dashscope
-    except Exception:
+    if provider == "openai":
+        return _synthesize_openai_tts(text, tts, api_key)
+    return _synthesize_dashscope_tts(text, tts, api_key, on_download_progress)
+
+    if provider == "openai":
+        return _synthesize_openai_tts(text, tts)
+    return _synthesize_dashscope_tts(text, tts, on_download_progress)
+
+
+def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
+    model = tts.get("model") or "qwen3-tts-flash"
+    voice = tts.get("voice") or "Cherry"
+    lang = tts.get("language_type") or "Chinese"
+    api_key = tts.get("api_key") or ""
+
+    if importlib.util.find_spec("dashscope") is None:
         return None, "Module 'dashscope' is not installed in Anki's environment."
+
+    import dashscope
 
     try:
         response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(
@@ -98,3 +141,22 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
         return None, f"Audio download error: {err}"
 
     return data, None
+
+
+def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+    api_key = tts.get("api_key") or ""
+    model = tts.get("model") or "gpt-4o-mini-tts"
+    voice = tts.get("voice") or "alloy"
+    response_format = tts.get("response_format") or (tts.get("ext") or "mp3")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "voice": voice,
+        "input": text,
+        "format": response_format,
+    }
+    return _post_json_for_bytes("https://api.openai.com/v1/audio/speech", headers, payload)

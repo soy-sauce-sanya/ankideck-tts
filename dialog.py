@@ -26,10 +26,9 @@ from .media_utils import add_media_bytes, update_note
 from .tts_provider import synthesize_tts_bytes
 from .text_utils import strip_html, safe_filename_from_text, render_sound_tag
 from .voice_utils import (
-    get_voices_and_languages,
     get_voice_display_name,
     language_display_to_api_format,
-    api_format_to_language_display
+    get_provider_voices_and_languages
 )
 
 
@@ -57,6 +56,7 @@ class TTSDialog(QDialog):
         self.model_combo = QComboBox(self)
         self.source_field_combo = QComboBox(self)
         self.target_field_combo = QComboBox(self)
+        self.provider_combo = QComboBox(self)
         self.voice_combo = QComboBox(self)
         self.language_combo = QComboBox(self)
 
@@ -90,6 +90,7 @@ class TTSDialog(QDialog):
         form.addRow("Note type:", self.model_combo)
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
+        form.addRow("Provider:", self.provider_combo)
         form.addRow("Voice:", self.voice_combo)
         form.addRow("Language:", self.language_combo)
         form.addRow("Overwrite:", self.overwrite_chk)
@@ -115,6 +116,7 @@ class TTSDialog(QDialog):
         qconnect(self.clear_btn.clicked, self._clear_queue)
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
+        qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
 
@@ -129,6 +131,7 @@ class TTSDialog(QDialog):
         # Populate
         self._load_decks()
         self._load_models()
+        self._load_providers()
         self._load_voices_and_languages()
         self._select_current_deck()
         self._on_model_changed()
@@ -198,7 +201,8 @@ class TTSDialog(QDialog):
 
     def _load_voices_and_languages(self):
         """Load voices and languages from voices.txt file."""
-        self.voices_data, self.languages_data = get_voices_and_languages()
+        provider = self.provider_combo.currentData() or cfg.get("tts", {}).get("provider", "dashscope")
+        self.voices_data, self.languages_data = get_provider_voices_and_languages(provider)
 
         # Populate voice combo box
         self.voice_combo.clear()
@@ -224,10 +228,38 @@ class TTSDialog(QDialog):
                 break
 
         # Find and select the current language
-        for i in range(self.language_combo.count()):
-            if self.language_combo.itemData(i) == current_language_api:
-                self.language_combo.setCurrentIndex(i)
+        if self.language_combo.count() == 0:
+            self.language_combo.setEnabled(False)
+        else:
+            self.language_combo.setEnabled(True)
+            for i in range(self.language_combo.count()):
+                if self.language_combo.itemData(i) == current_language_api:
+                    self.language_combo.setCurrentIndex(i)
+                    break
+
+    def _load_providers(self):
+        """Load provider options into the combo box."""
+        self.provider_combo.clear()
+        self.provider_combo.addItem("Qwen (DashScope)", "dashscope")
+        self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
+
+        cfg = get_config()
+        current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
+        for i in range(self.provider_combo.count()):
+            if self.provider_combo.itemData(i) == current_provider:
+                self.provider_combo.setCurrentIndex(i)
                 break
+
+    def _on_provider_changed(self):
+        """Handle provider selection change."""
+        provider = self.provider_combo.currentData()
+        if provider:
+            cfg = mw.addonManager.getConfig(__name__) or {}
+            if "tts" not in cfg:
+                cfg["tts"] = {}
+            cfg["tts"]["provider"] = provider
+            mw.addonManager.writeConfig(__name__, cfg)
+            self._load_voices_and_languages()
 
     def _on_voice_changed(self):
         """Handle voice selection change."""
