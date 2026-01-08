@@ -143,7 +143,7 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
     return data, None
 
 
-def _synthesize_openai_tts(text: str, tts: dict) -> Tuple[Optional[bytes], Optional[str]]:
+def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
     api_key = tts.get("api_key") or ""
     model = tts.get("model") or "gpt-4o-mini-tts"
     voice = tts.get("voice") or "alloy"
