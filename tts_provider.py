@@ -108,7 +108,7 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     return _synthesize_dashscope_tts(text, tts, on_download_progress)
 
 
-def _synthesize_dashscope_tts(text: str, tts: dict, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
+def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
     model = tts.get("model") or "qwen3-tts-flash"
     voice = tts.get("voice") or "Cherry"
     lang = tts.get("language_type") or "Chinese"
