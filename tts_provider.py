@@ -100,6 +100,10 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
         return None, "API key (tts.api_key) is not set in add-on config."
 
     if provider == "openai":
+        return _synthesize_openai_tts(text, tts, api_key)
+    return _synthesize_dashscope_tts(text, tts, api_key, on_download_progress)
+
+    if provider == "openai":
         return _synthesize_openai_tts(text, tts)
     return _synthesize_dashscope_tts(text, tts, on_download_progress)
 
