@@ -200,43 +200,44 @@ class TTSDialog(QDialog):
         sel(self.target_field_combo, ["Audio", "Pronunciation", "BackAudio", "Sound", "AudioBack"])
 
     def _load_voices_and_languages(self):
-        """Load voices and languages from voices.txt file."""
-        provider = self.provider_combo.currentData() or cfg.get("tts", {}).get("provider", "dashscope")
-        self.voices_data, self.languages_data = get_provider_voices_and_languages(provider)
+    """Load voices and languages from voices.txt file."""
+    cfg = get_config()
+    tts_cfg = cfg.get("tts", {})
+    provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
 
-        # Populate voice combo box
-        self.voice_combo.clear()
-        for voice in self.voices_data:
-            display_name = get_voice_display_name(voice)
-            self.voice_combo.addItem(display_name, voice['english'])
+    self.voices_data, self.languages_data = get_provider_voices_and_languages(provider)
 
-        # Populate language combo box
-        self.language_combo.clear()
-        for lang in self.languages_data:
-            self.language_combo.addItem(lang, language_display_to_api_format(lang))
+    # Populate voice combo box
+    self.voice_combo.clear()
+    for voice in self.voices_data:
+        display_name = get_voice_display_name(voice)
+        self.voice_combo.addItem(display_name, voice['english'])
 
-        # Select current voice and language from config
-        cfg = get_config()
-        tts_cfg = cfg.get("tts", {})
-        voices_cfg = tts_cfg.get("voices") or {}
-        current_voice = voices_cfg.get(provider) or tts_cfg.get("voice", "Ethan")
-        current_language_api = tts_cfg.get("language_type", "Chinese")
+    # Populate language combo box
+    self.language_combo.clear()
+    for lang in self.languages_data:
+        self.language_combo.addItem(lang, language_display_to_api_format(lang))
 
-        # Find and select the current voice
-        for i in range(self.voice_combo.count()):
-            if self.voice_combo.itemData(i) == current_voice:
-                self.voice_combo.setCurrentIndex(i)
+    # Select current voice and language from config
+    voices_cfg = tts_cfg.get("voices") or {}
+    current_voice = voices_cfg.get(provider) or tts_cfg.get("voice", "Ethan")
+    current_language_api = tts_cfg.get("language_type", "Chinese")
+
+    # Find and select the current voice
+    for i in range(self.voice_combo.count()):
+        if self.voice_combo.itemData(i) == current_voice:
+            self.voice_combo.setCurrentIndex(i)
+            break
+
+    # Find and select the current language
+    if self.language_combo.count() == 0:
+        self.language_combo.setEnabled(False)
+    else:
+        self.language_combo.setEnabled(True)
+        for i in range(self.language_combo.count()):
+            if self.language_combo.itemData(i) == current_language_api:
+                self.language_combo.setCurrentIndex(i)
                 break
-
-        # Find and select the current language
-        if self.language_combo.count() == 0:
-            self.language_combo.setEnabled(False)
-        else:
-            self.language_combo.setEnabled(True)
-            for i in range(self.language_combo.count()):
-                if self.language_combo.itemData(i) == current_language_api:
-                    self.language_combo.setCurrentIndex(i)
-                    break
 
     def _load_providers(self):
         """Load provider options into the combo box."""
