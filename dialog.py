@@ -273,9 +273,8 @@ class TTSDialog(QDialog):
             cfg["tts"]["voice"] = voice_english
             provider = self.provider_combo.currentData()
             if provider:
-                voices_cfg = cfg["tts"].get("voices") or {}
+                voices_cfg = cfg["tts"].setdefault("voices", {})
                 voices_cfg[provider] = voice_english
-                cfg["tts"]["voices"] = voices_cfg
             mw.addonManager.writeConfig(__name__, cfg)
 
     def _on_language_changed(self):
