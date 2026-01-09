@@ -93,7 +93,7 @@ def _resolve_tts_setting(tts: dict, provider: str, key: str, fallback: str) -> s
     mapping = tts.get(f"{key}s")
     if isinstance(mapping, dict):
         value = mapping.get(provider)
-        if value:
+        if value is not None:
             return value
     return tts.get(key) or fallback
 
