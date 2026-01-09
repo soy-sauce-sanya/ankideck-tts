@@ -28,7 +28,8 @@ from .text_utils import strip_html, safe_filename_from_text, render_sound_tag
 from .voice_utils import (
     get_voice_display_name,
     language_display_to_api_format,
-    get_provider_voices_and_languages
+    get_provider_voices_and_languages,
+    get_provider_models
 )
 
 
@@ -57,6 +58,7 @@ class TTSDialog(QDialog):
         self.source_field_combo = QComboBox(self)
         self.target_field_combo = QComboBox(self)
         self.provider_combo = QComboBox(self)
+        self.tts_model_combo = QComboBox(self)
         self.voice_combo = QComboBox(self)
         self.language_combo = QComboBox(self)
 
@@ -91,6 +93,7 @@ class TTSDialog(QDialog):
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
         form.addRow("Provider:", self.provider_combo)
+        form.addRow("TTS model:", self.tts_model_combo)
         form.addRow("Voice:", self.voice_combo)
         form.addRow("Language:", self.language_combo)
         form.addRow("Overwrite:", self.overwrite_chk)
@@ -117,6 +120,7 @@ class TTSDialog(QDialog):
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
         qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
+        qconnect(self.tts_model_combo.currentIndexChanged, self._on_tts_model_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
 
@@ -132,6 +136,7 @@ class TTSDialog(QDialog):
         self._load_decks()
         self._load_models()
         self._load_providers()
+        self._load_tts_models()
         self._load_voices_and_languages()
         self._select_current_deck()
         self._on_model_changed()
@@ -239,11 +244,30 @@ class TTSDialog(QDialog):
                     self.language_combo.setCurrentIndex(i)
                     break
 
+    def _load_tts_models(self):
+        """Load provider-specific TTS models into the combo box."""
+        cfg = get_config()
+        tts_cfg = cfg.get("tts", {})
+        provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
+        models = get_provider_models(provider)
+
+        self.tts_model_combo.clear()
+        for model in models:
+            self.tts_model_combo.addItem(model, model)
+
+        current_models = tts_cfg.get("models") or {}
+        current_model = current_models.get(provider) or tts_cfg.get("model")
+        for i in range(self.tts_model_combo.count()):
+            if self.tts_model_combo.itemData(i) == current_model:
+                self.tts_model_combo.setCurrentIndex(i)
+                break
+
     def _load_providers(self):
         """Load provider options into the combo box."""
         self.provider_combo.clear()
         self.provider_combo.addItem("Qwen (DashScope)", "dashscope")
         self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
+        self.provider_combo.addItem("11 Labs", "elevenlabs")
 
         cfg = get_config()
         current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
@@ -261,7 +285,22 @@ class TTSDialog(QDialog):
                 cfg["tts"] = {}
             cfg["tts"]["provider"] = provider
             mw.addonManager.writeConfig(__name__, cfg)
+            self._load_tts_models()
             self._load_voices_and_languages()
+
+    def _on_tts_model_changed(self):
+        """Handle TTS model selection change."""
+        model = self.tts_model_combo.currentData()
+        if model:
+            cfg = mw.addonManager.getConfig(__name__) or {}
+            if "tts" not in cfg:
+                cfg["tts"] = {}
+            cfg["tts"]["model"] = model
+            provider = self.provider_combo.currentData()
+            if provider:
+                models_cfg = cfg["tts"].setdefault("models", {})
+                models_cfg[provider] = model
+            mw.addonManager.writeConfig(__name__, cfg)
 
     def _on_voice_changed(self):
         """Handle voice selection change."""
@@ -393,7 +432,9 @@ class TTSDialog(QDialog):
 
             # Store media
             tts_cfg = cfg.get("tts") or {}
-            ext = (tts_cfg.get("ext") or "wav").lstrip(".")
+            provider = (tts_cfg.get("provider") or "dashscope").lower()
+            exts = tts_cfg.get("exts") or {}
+            ext = (exts.get(provider) or tts_cfg.get("ext") or "wav").lstrip(".")
             template = cfg.get("filename_template") or "tts_{nid}_{field}.{ext}"
             preferred_name = template.format(nid=job["nid"], field=dst, ext=ext)
             if len(preferred_name) < 8:
