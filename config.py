@@ -8,6 +8,10 @@ DEFAULT_CONFIG = {
     "tts": {
         "provider": "dashscope",
         "api_key": "",
+        "api_keys": {
+            "dashscope": "",
+            "openai": ""
+        },
         "model": "qwen3-tts-flash",
         "voice": "Ethan",
         "language_type": "Chinese",
