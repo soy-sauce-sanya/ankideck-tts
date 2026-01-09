@@ -86,11 +86,18 @@ def get_voice_display_name(voice: Dict[str, str]) -> str:
 
 OPENAI_VOICES = [
     {"chinese": "Alloy", "english": "alloy"},
+    {"chinese": "Ash", "english": "ash"},
+    {"chinese": "Ballad", "english": "ballad"},
+    {"chinese": "Coral", "english": "coral"},
     {"chinese": "Echo", "english": "echo"},
     {"chinese": "Fable", "english": "fable"},
-    {"chinese": "Onyx", "english": "onyx"},
     {"chinese": "Nova", "english": "nova"},
+    {"chinese": "Onyx", "english": "onyx"},
+    {"chinese": "Sage", "english": "sage"},
     {"chinese": "Shimmer", "english": "shimmer"},
+    {"chinese": "Verse", "english": "verse"},
+    {"chinese": "Marin", "english": "marin"},
+    {"chinese": "Cedar", "english": "Cedar"},
 ]
 
 
