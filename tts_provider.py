@@ -81,7 +81,7 @@ def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, s
 
 
 def _resolve_api_key(tts: dict, provider: str) -> str:
-    api_keys = tts.get("api_keys") or {}
+    api_keys = tts.get("api_keys")
     if isinstance(api_keys, dict):
         api_key = api_keys.get(provider)
         if api_key:
