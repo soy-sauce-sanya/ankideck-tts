@@ -146,7 +146,7 @@ def get_provider_voices_and_languages(provider: str) -> Tuple[List[Dict[str, str
     provider = (provider or "").lower()
     if provider == "openai":
         return OPENAI_VOICES, []
-    if provider == "elevenlabs":
+    elif provider == "elevenlabs":
         return ELEVENLABS_VOICES, []
     return get_voices_and_languages()
 
