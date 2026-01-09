@@ -89,6 +89,15 @@ def _resolve_api_key(tts: dict, provider: str) -> str:
     return tts.get("api_key") or ""
 
 
+def _resolve_tts_setting(tts: dict, provider: str, key: str, fallback: str) -> str:
+    mapping = tts.get(f"{key}s")
+    if isinstance(mapping, dict):
+        value = mapping.get(provider)
+        if value:
+            return value
+    return tts.get(key) or fallback
+
+
 def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
     """Synthesize text to audio using DashScope TTS API.
 
@@ -118,8 +127,8 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
 
 
 def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
-    model = tts.get("model") or "qwen3-tts-flash"
-    voice = tts.get("voice") or "Cherry"
+    model = _resolve_tts_setting(tts, "dashscope", "model", "qwen3-tts-flash")
+    voice = _resolve_tts_setting(tts, "dashscope", "voice", "Cherry")
     lang = tts.get("language_type") or "Chinese"
     api_key = api_key or tts.get("api_key") or ""
 
@@ -154,9 +163,9 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
 
 def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
     api_key = api_key or tts.get("api_key") or ""
-    model = tts.get("model") or "gpt-4o-mini-tts"
-    voice = tts.get("voice") or "alloy"
-    response_format = tts.get("response_format") or (tts.get("ext") or "mp3")
+    model = _resolve_tts_setting(tts, "openai", "model", "gpt-4o-mini-tts")
+    voice = _resolve_tts_setting(tts, "openai", "voice", "alloy")
+    response_format = tts.get("response_format") or _resolve_tts_setting(tts, "openai", "ext", "mp3")
 
     headers = {
         "Authorization": f"Bearer {api_key}",

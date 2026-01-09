@@ -15,7 +15,19 @@ DEFAULT_CONFIG = {
         "model": "qwen3-tts-flash",
         "voice": "Ethan",
         "language_type": "Chinese",
-        "ext": "wav"
+        "ext": "wav",
+        "models": {
+            "dashscope": "qwen3-tts-flash",
+            "openai": "gpt-4o-mini-tts"
+        },
+        "voices": {
+            "dashscope": "Ethan",
+            "openai": "alloy"
+        },
+        "exts": {
+            "dashscope": "wav",
+            "openai": "mp3"
+        }
     },
     "write_mode": "append",
     "append_separator": "<br>",
