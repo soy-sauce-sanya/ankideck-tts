@@ -119,11 +119,9 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
 
     if provider == "openai":
         return _synthesize_openai_tts(text, tts, api_key)
+    if provider == "elevenlabs":
+        return _synthesize_elevenlabs_tts(text, tts, api_key)
     return _synthesize_dashscope_tts(text, tts, api_key, on_download_progress)
-
-    if provider == "openai":
-        return _synthesize_openai_tts(text, tts)
-    return _synthesize_dashscope_tts(text, tts, on_download_progress)
 
 
 def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
@@ -178,3 +176,23 @@ def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional
         "format": response_format,
     }
     return _post_json_for_bytes("https://api.openai.com/v1/audio/speech", headers, payload)
+
+
+def _synthesize_elevenlabs_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+    voice_id = _resolve_tts_setting(tts, "elevenlabs", "voice", "21m00Tcm4TlvDq8ikWAM")
+    model = _resolve_tts_setting(tts, "elevenlabs", "model", "eleven_multilingual_v2")
+    voice_settings = tts.get("voice_settings")
+    payload = {
+        "text": text,
+        "model_id": model,
+    }
+    if isinstance(voice_settings, dict):
+        payload["voice_settings"] = voice_settings
+
+    headers = {
+        "xi-api-key": api_key,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    return _post_json_for_bytes(url, headers, payload)

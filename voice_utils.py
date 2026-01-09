@@ -100,6 +100,23 @@ OPENAI_VOICES = [
     {"chinese": "Cedar", "english": "cedar"},
 ]
 
+ELEVENLABS_VOICES = [
+    {"chinese": "Rachel", "english": "21m00Tcm4TlvDq8ikWAM"},
+    {"chinese": "Domi", "english": "AZnzlk1XvdvUeBnXmlld"},
+    {"chinese": "Bella", "english": "EXAVITQu4vr4xnSDxMaL"},
+    {"chinese": "Antoni", "english": "ErXwobaYiN019PkySvjV"},
+    {"chinese": "Elli", "english": "MF3mGyEYCl7XYWbV9V6O"},
+    {"chinese": "Josh", "english": "TxGEqnHWrfWFTfGW9XjX"},
+    {"chinese": "Adam", "english": "pNInz6obpgDQGcFmaJgB"},
+    {"chinese": "Sam", "english": "yoZ06aMxZJJ28mfd3POQ"},
+]
+
+PROVIDER_MODELS = {
+    "dashscope": ["qwen3-tts-flash", "qwen3-tts"],
+    "openai": ["gpt-4o-mini-tts", "gpt-4o-tts"],
+    "elevenlabs": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5"],
+}
+
 
 def get_voices_and_languages() -> Tuple[List[Dict[str, str]], List[str]]:
     """Get available voices and languages from the voices.txt file.
@@ -126,9 +143,24 @@ def get_provider_voices_and_languages(provider: str) -> Tuple[List[Dict[str, str
     Returns:
         Tuple of (voices_list, languages_list)
     """
-    if (provider or "").lower() == "openai":
+    provider = (provider or "").lower()
+    if provider == "openai":
         return OPENAI_VOICES, []
+    if provider == "elevenlabs":
+        return ELEVENLABS_VOICES, []
     return get_voices_and_languages()
+
+
+def get_provider_models(provider: str) -> List[str]:
+    """Get available models for a specific provider.
+
+    Args:
+        provider: TTS provider identifier (e.g., "dashscope", "openai")
+
+    Returns:
+        List of model identifiers for the provider.
+    """
+    return PROVIDER_MODELS.get((provider or "").lower(), [])
 
 
 def language_display_to_api_format(display_name: str) -> str:

@@ -10,7 +10,8 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "api_keys": {
             "dashscope": "",
-            "openai": ""
+            "openai": "",
+            "elevenlabs": ""
         },
         "model": "qwen3-tts-flash",
         "voice": "Ethan",
@@ -18,15 +19,18 @@ DEFAULT_CONFIG = {
         "ext": "wav",
         "models": {
             "dashscope": "qwen3-tts-flash",
-            "openai": "gpt-4o-mini-tts"
+            "openai": "gpt-4o-mini-tts",
+            "elevenlabs": "eleven_multilingual_v2"
         },
         "voices": {
             "dashscope": "Ethan",
-            "openai": "alloy"
+            "openai": "alloy",
+            "elevenlabs": "21m00Tcm4TlvDq8ikWAM"
         },
         "exts": {
             "dashscope": "wav",
-            "openai": "mp3"
+            "openai": "mp3",
+            "elevenlabs": "mp3"
         }
     },
     "write_mode": "append",
