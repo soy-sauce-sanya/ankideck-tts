@@ -293,8 +293,7 @@ class TTSDialog(QDialog):
         model = self.tts_model_combo.currentData()
         if model:
             cfg = mw.addonManager.getConfig(__name__) or {}
-            if "tts" not in cfg:
-                cfg["tts"] = {}
+            cfg.setdefault("tts", {})
             cfg["tts"]["model"] = model
             provider = self.provider_combo.currentData()
             if provider:
