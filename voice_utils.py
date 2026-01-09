@@ -97,7 +97,7 @@ OPENAI_VOICES = [
     {"chinese": "Shimmer", "english": "shimmer"},
     {"chinese": "Verse", "english": "verse"},
     {"chinese": "Marin", "english": "marin"},
-    {"chinese": "Cedar", "english": "Cedar"},
+    {"chinese": "Cedar", "english": "cedar"},
 ]
 
 
