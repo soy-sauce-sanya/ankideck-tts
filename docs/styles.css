@@ -1,0 +1,86 @@
+:root {
+  --bg: #f5f4ef;
+  --panel: #fffef8;
+  --text: #1e232a;
+  --muted: #4a5668;
+  --accent: #0f766e;
+  --border: #d6d5cd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 15% 20%, #ffffff 0%, rgba(255, 255, 255, 0) 40%),
+    linear-gradient(165deg, #e8ebe4, var(--bg));
+}
+
+.container {
+  max-width: 840px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(32, 40, 45, 0.08);
+}
+
+.hero {
+  margin-bottom: 1.5rem;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0.3rem 0 0.8rem;
+  font-size: clamp(2rem, 4vw, 2.7rem);
+}
+
+h2 {
+  margin: 1.5rem 0 0.7rem;
+  font-size: 1.35rem;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+li {
+  margin: 0.35rem 0;
+}
+
+p {
+  color: var(--muted);
+}
+
+a {
+  color: var(--accent);
+}
+
+@media (max-width: 700px) {
+  .container {
+    margin: 1rem;
+    padding: 1.25rem;
+  }
+}

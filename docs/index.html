@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AnkiDeck TTS</title>
+    <meta
+      name="description"
+      content="AnkiDeck TTS addon: batch text-to-speech generation for Anki notes with queue progress and multiple providers."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <p class="eyebrow">Anki Add-on</p>
+        <h1>AnkiDeck TTS</h1>
+        <p class="lead">
+          Generate note audio from text with per-row queue progress and sequential processing.
+        </p>
+      </header>
+
+      <section>
+        <h2>What It Does</h2>
+        <ul>
+          <li>Processes current or selected notes in batch mode.</li>
+          <li>Writes generated audio into a target field.</li>
+          <li>Supports multiple TTS providers and models.</li>
+          <li>Configurable overwrite and skip rules for safer runs.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Providers</h2>
+        <p>Current configuration includes support for DashScope, OpenAI, and ElevenLabs.</p>
+      </section>
+
+      <section>
+        <h2>Repository</h2>
+        <p>
+          View source and setup details in the project repository:
+          <a id="repo-link" href="#">GitHub Repo</a>
+        </p>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        var host = window.location.hostname;
+        var path = window.location.pathname.split("/")[1] || "";
+        var isGithubPages = host.indexOf("github.io") !== -1;
+        var repoUrl = isGithubPages && path
+          ? "https://github.com/" + host.replace(".github.io", "") + "/" + path
+          : "https://github.com/";
+        var link = document.getElementById("repo-link");
+        link.href = repoUrl;
+      })();
+    </script>
+  </body>
+</html>
