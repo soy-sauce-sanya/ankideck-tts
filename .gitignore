@@ -43,3 +43,6 @@ env/
 
 # Anki addon specific
 *.ankiaddon
+
+# GitHub workflows (main branch)
+.github/workflows/
