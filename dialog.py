@@ -159,6 +159,19 @@ class TTSDialog(QDialog):
         for name, did in all_deck_names_and_ids():
             self.deck_combo.addItem(name or "(no name)", did)
 
+    def refresh_decks(self):
+        """Refresh deck list while trying to keep current selection."""
+        selected_did = self.deck_combo.currentData()
+        self._load_decks()
+
+        if selected_did is not None:
+            for i in range(self.deck_combo.count()):
+                if self.deck_combo.itemData(i) == selected_did:
+                    self.deck_combo.setCurrentIndex(i)
+                    return
+
+        self._select_current_deck()
+
     def _select_current_deck(self):
         """Select the currently active deck in the combo box."""
         try:
@@ -534,6 +547,8 @@ def open_tts_dialog():
     global _dialog_instance
     if _dialog_instance is None:
         _dialog_instance = TTSDialog(mw)
+    else:
+        _dialog_instance.refresh_decks()
     _dialog_instance.show()
     _dialog_instance.raise_()
     _dialog_instance.activateWindow()
