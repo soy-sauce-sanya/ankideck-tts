@@ -8,40 +8,69 @@
       name="description"
       content="AnkiDeck TTS addon: batch text-to-speech generation for Anki notes with queue progress and multiple providers."
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="container">
-      <header class="hero">
+    <div class="bg-shape bg-shape-one"></div>
+    <div class="bg-shape bg-shape-two"></div>
+
+    <main class="site">
+      <header class="hero reveal">
         <p class="eyebrow">Anki Add-on</p>
-        <h1>AnkiDeck TTS</h1>
+        <h1>Turn Note Text Into Ready-To-Review Audio</h1>
         <p class="lead">
-          Generate note audio from text with per-row queue progress and sequential processing.
+          AnkiDeck TTS batches selected notes, synthesizes speech, and writes audio tags to your target field with
+          transparent queue status.
         </p>
+        <div class="hero-actions">
+          <a id="repo-link" class="btn btn-primary" href="#">Open Repository</a>
+          <a class="btn btn-ghost" href="#features">See Features</a>
+        </div>
       </header>
 
-      <section>
-        <h2>What It Does</h2>
-        <ul>
-          <li>Processes current or selected notes in batch mode.</li>
-          <li>Writes generated audio into a target field.</li>
-          <li>Supports multiple TTS providers and models.</li>
-          <li>Configurable overwrite and skip rules for safer runs.</li>
-        </ul>
+      <section id="features" class="panel reveal">
+        <h2>Core Features</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Queue-First Processing</h3>
+            <p>Process current or browser-selected notes in sequence with per-row state and progress visibility.</p>
+          </article>
+          <article class="card">
+            <h3>Provider Flexibility</h3>
+            <p>Switch between DashScope, OpenAI, and ElevenLabs models depending on quality, cost, and language needs.</p>
+          </article>
+          <article class="card">
+            <h3>Safe Write Controls</h3>
+            <p>Use overwrite and skip rules to avoid accidentally replacing existing audio in important decks.</p>
+          </article>
+        </div>
       </section>
 
-      <section>
-        <h2>Providers</h2>
-        <p>Current configuration includes support for DashScope, OpenAI, and ElevenLabs.</p>
+      <section class="panel reveal">
+        <h2>Workflow</h2>
+        <ol class="workflow">
+          <li>Pick deck, note type, source field, and target field.</li>
+          <li>Choose TTS provider, model, voice, and language mode.</li>
+          <li>Run processing and monitor each row as audio is generated.</li>
+        </ol>
       </section>
 
-      <section>
-        <h2>Repository</h2>
-        <p>
-          View source and setup details in the project repository:
-          <a id="repo-link" href="#">GitHub Repo</a>
+      <section class="panel reveal">
+        <h2>Project Status</h2>
+        <p class="status">
+          English UI, queue per-row progress, and sequential batch processing are active in this version.
         </p>
       </section>
+
+      <footer class="footer reveal">
+        <p><span id="year"></span> AnkiDeck TTS</p>
+      </footer>
     </main>
 
     <script>
@@ -54,6 +83,8 @@
           : "https://github.com/";
         var link = document.getElementById("repo-link");
         link.href = repoUrl;
+        var year = document.getElementById("year");
+        year.textContent = new Date().getFullYear();
       })();
     </script>
   </body>
