@@ -418,6 +418,7 @@ class TTSDialog(QDialog):
     def _enqueue_notes(self, nids: List[int]):
         """Add notes to the processing queue."""
         src = self.source_field_combo.currentText()
+        dst = self.target_field_combo.currentText()
         for nid in nids:
             try:
                 note = mw.col.get_note(nid)
@@ -426,7 +427,15 @@ class TTSDialog(QDialog):
                 text = ""
             preview = (text[:80] + "…") if len(text) > 80 else text
             row = self._append_job_row(preview or "(empty)", "waiting")
-            self.jobs.append({"nid": nid, "row": row, "state": "waiting", "progress": 0, "text": text})
+            self.jobs.append({
+                "nid": nid,
+                "row": row,
+                "state": "waiting",
+                "progress": 0,
+                "text": text,
+                "src": src,
+                "dst": dst,
+            })
         self._update_batch_bar()
 
     def _update_batch_bar(self):
@@ -457,33 +466,55 @@ class TTSDialog(QDialog):
     def _process_job(self, job: Dict):
         """Process a single job."""
         cfg = get_config()
-        src = self.source_field_combo.currentText()
-        dst = self.target_field_combo.currentText()
+        src = job.get("src") or self.source_field_combo.currentText()
+        dst = job.get("dst") or self.target_field_combo.currentText()
         overwrite = self.overwrite_chk.isChecked()
+
+        # Read note/fields on the main thread before background synthesis.
+        try:
+            note = mw.col.get_note(job["nid"])
+        except Exception as e:
+            job["state"] = "error"
+            self._update_row(job["row"], state=f"error: note load failed: {e}", busy=False, progress=0)
+            self._update_batch_bar()
+            mw.taskman.run_on_main(self._process_next)
+            return
+
+        try:
+            text = strip_html(note[src])
+        except Exception:
+            text = job.get("text") or ""
+
+        if not (text or "").strip() and bool((cfg.get("batch") or {}).get("skip_if_source_empty", True)):
+            job["state"] = "skipped"
+            job["progress"] = 0
+            self._update_row(job["row"], state="skipped (empty)", busy=False, progress=0)
+            self._update_batch_bar()
+            mw.taskman.run_on_main(self._process_next)
+            return
+
+        try:
+            cur_val = note[dst]
+        except Exception as e:
+            job["state"] = "error"
+            self._update_row(job["row"], state=f"error: target field '{dst}' not found: {e}", busy=False, progress=0)
+            self._update_batch_bar()
+            mw.taskman.run_on_main(self._process_next)
+            return
+
+        if not overwrite and bool((cfg.get("batch") or {}).get("skip_if_target_has_sound", True)) and "[sound:" in (cur_val or ""):
+            job["state"] = "skipped"
+            job["progress"] = 0
+            self._update_row(job["row"], state="skipped (already has sound)", busy=False, progress=0)
+            self._update_batch_bar()
+            mw.taskman.run_on_main(self._process_next)
+            return
 
         job["state"] = "processing"
         self._update_row(job["row"], state="processing (generating…)", busy=True, progress=0)
 
         def bg():
-            # Re-read text
-            try:
-                note = mw.col.get_note(job["nid"])
-                text = note[src]
-            except Exception:
-                text = job.get("text") or ""
-            # Skip if empty
-            if not (text or "").strip() and bool((cfg.get("batch") or {}).get("skip_if_source_empty", True)):
-                return ("skip_empty", None, "source empty")
-            # Skip if has sound and not overwrite
-            try:
-                note = mw.col.get_note(job["nid"])
-                cur_val = note[dst]
-            except Exception:
-                cur_val = ""
-            if not overwrite and bool((cfg.get("batch") or {}).get("skip_if_target_has_sound", True)) and "[sound:" in (cur_val or ""):
-                return ("skip_has_sound", None, "already has sound")
-
-            # Synthesize & show download progress
+            # Synthesize audio in background only.
             def on_dl(pct: int):
                 mw.taskman.run_on_main(lambda: self._update_row(job["row"], state="processing (downloading…)", busy=False, progress=pct))
 
@@ -492,40 +523,7 @@ class TTSDialog(QDialog):
                 return ("error", None, err)
             if not audio_bytes:
                 return ("no_audio", None, "no audio returned")
-
-            # Store media
-            tts_cfg = cfg.get("tts") or {}
-            provider = (tts_cfg.get("provider") or "dashscope").lower()
-            exts = tts_cfg.get("exts") or {}
-            ext = (exts.get(provider) or tts_cfg.get("ext") or "wav").lstrip(".")
-            template = cfg.get("filename_template") or "tts_{nid}_{field}.{ext}"
-            preferred_name = template.format(nid=job["nid"], field=dst, ext=ext)
-            if len(preferred_name) < 8:
-                preferred_name = safe_filename_from_text(text, ext)
-            stored_name = add_media_bytes(preferred_name, audio_bytes)
-            if not stored_name:
-                return ("error", None, "failed to store media")
-
-            # Update note
-            tag = render_sound_tag(stored_name)
-            write_mode = "replace" if overwrite else (cfg.get("write_mode") or "append").lower()
-            try:
-                note = mw.col.get_note(job["nid"])
-                cur_val = note[dst]
-            except Exception:
-                cur_val = ""
-            if write_mode == "replace":
-                new_val = tag
-            else:
-                sep = cfg.get("append_separator") or " "
-                new_val = cur_val if tag in cur_val else (cur_val + (sep if cur_val.strip() else "") + tag)
-            try:
-                note[dst] = new_val
-                update_note(note)
-            except Exception as e:
-                return ("error", None, f"write failed: {e}")
-
-            return ("ok", stored_name, None)
+            return ("ok", audio_bytes, None)
 
         def on_done(result_or_future):
             # Anki 25.09 passes a Future to on_done; older versions may pass the result directly.
@@ -537,21 +535,55 @@ class TTSDialog(QDialog):
                 try:
                     result = result_or_future.result()
                 except Exception as e:
-                    status, stored_name, err = ("error", None, str(e))
+                    status, payload, err = ("error", None, str(e))
                 else:
-                    status, stored_name, err = result
+                    status, payload, err = result
             else:
                 result = result_or_future
-                status, stored_name, err = result
+                status, payload, err = result
+
+            if status == "ok":
+                audio_bytes = payload
+                tts_cfg = cfg.get("tts") or {}
+                provider = (tts_cfg.get("provider") or "dashscope").lower()
+                exts = tts_cfg.get("exts") or {}
+                ext = (exts.get(provider) or tts_cfg.get("ext") or "wav").lstrip(".")
+                template = cfg.get("filename_template") or "tts_{nid}_{field}.{ext}"
+                try:
+                    preferred_name = template.format(nid=job["nid"], field=dst, ext=ext)
+                    # Sanitize to prevent path traversal
+                    import re
+                    preferred_name = re.sub(r'[\\/]', '_', preferred_name)
+                except Exception:
+                    preferred_name = safe_filename_from_text(text, ext)
+                if len(preferred_name) < 8:
+                    preferred_name = safe_filename_from_text(text, ext)
+
+                stored_name = add_media_bytes(preferred_name, audio_bytes)
+                if not stored_name:
+                    status, err = "error", "failed to store media"
+                else:
+                    tag = render_sound_tag(stored_name)
+                    write_mode = "replace" if overwrite else (cfg.get("write_mode") or "append").lower()
+                    try:
+                        note = mw.col.get_note(job["nid"])
+                        cur_val = note[dst]
+                        if write_mode == "replace":
+                            new_val = tag
+                        else:
+                            sep = cfg.get("append_separator") or " "
+                            new_val = cur_val if tag in cur_val else (cur_val + (sep if cur_val.strip() else "") + tag)
+                        note[dst] = new_val
+                        update_note(note)
+                    except Exception as e:
+                        status, err = "error", f"write failed: {e}"
+                    else:
+                        status = "ok"
+
             if status == "ok":
                 job["state"] = "done"
                 job["progress"] = 100
                 self._update_row(job["row"], state="done", busy=False, progress=100)
-            elif status in ("skip_empty", "skip_has_sound"):
-                job["state"] = "skipped"
-                job["progress"] = 0
-                label = "skipped (empty)" if status == "skip_empty" else "skipped (already has sound)"
-                self._update_row(job["row"], state=label, busy=False, progress=0)
             elif status == "no_audio":
                 job["state"] = "error"
                 self._update_row(job["row"], state="no audio", busy=False, progress=0)
