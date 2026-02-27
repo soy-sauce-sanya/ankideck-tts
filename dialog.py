@@ -13,7 +13,7 @@ from aqt.qt import (
 )
 from aqt.utils import showInfo
 
-from .config import get_config
+from .config import get_config, get_raw_config, write_raw_config
 from .anki_helpers import (
     all_deck_names_and_ids,
     all_model_names_and_ids,
@@ -332,11 +332,11 @@ class TTSDialog(QDialog):
         """Handle provider selection change."""
         provider = self.provider_combo.currentData()
         if provider:
-            cfg = mw.addonManager.getConfig(__name__) or {}
+            cfg = get_raw_config()
             if "tts" not in cfg:
                 cfg["tts"] = {}
             cfg["tts"]["provider"] = provider
-            mw.addonManager.writeConfig(__name__, cfg)
+            write_raw_config(cfg)
             self._load_api_key_for_provider()
             self._load_tts_models()
             self._load_voices_and_languages()
@@ -345,32 +345,32 @@ class TTSDialog(QDialog):
         """Persist API key for selected provider."""
         provider = self.provider_combo.currentData() or "dashscope"
         api_key = (self.api_key_edit.text() or "").strip()
-        cfg = mw.addonManager.getConfig(__name__) or {}
+        cfg = get_raw_config()
         tts_cfg = cfg.setdefault("tts", {})
         api_keys = tts_cfg.setdefault("api_keys", {})
         api_keys[provider] = api_key
         tts_cfg["api_key"] = api_key
-        mw.addonManager.writeConfig(__name__, cfg)
+        write_raw_config(cfg)
 
     def _on_tts_model_changed(self):
         """Handle TTS model selection change."""
         model = self.tts_model_combo.currentData()
         if model:
-            cfg = mw.addonManager.getConfig(__name__) or {}
+            cfg = get_raw_config()
             cfg.setdefault("tts", {})
             cfg["tts"]["model"] = model
             provider = self.provider_combo.currentData()
             if provider:
                 models_cfg = cfg["tts"].setdefault("models", {})
                 models_cfg[provider] = model
-            mw.addonManager.writeConfig(__name__, cfg)
+            write_raw_config(cfg)
 
     def _on_voice_changed(self):
         """Handle voice selection change."""
         voice_english = self.voice_combo.currentData()
         if voice_english:
             # Update config
-            cfg = mw.addonManager.getConfig(__name__) or {}
+            cfg = get_raw_config()
             if "tts" not in cfg:
                 cfg["tts"] = {}
             cfg["tts"]["voice"] = voice_english
@@ -378,18 +378,18 @@ class TTSDialog(QDialog):
             if provider:
                 voices_cfg = cfg["tts"].setdefault("voices", {})
                 voices_cfg[provider] = voice_english
-            mw.addonManager.writeConfig(__name__, cfg)
+            write_raw_config(cfg)
 
     def _on_language_changed(self):
         """Handle language selection change."""
         language_api = self.language_combo.currentData()
         if language_api:
             # Update config
-            cfg = mw.addonManager.getConfig(__name__) or {}
+            cfg = get_raw_config()
             if "tts" not in cfg:
                 cfg["tts"] = {}
             cfg["tts"]["language_type"] = language_api
-            mw.addonManager.writeConfig(__name__, cfg)
+            write_raw_config(cfg)
 
     def _append_job_row(self, text: str, state: str) -> int:
         """Add a new job row to the table."""
