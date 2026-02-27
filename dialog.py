@@ -551,6 +551,9 @@ class TTSDialog(QDialog):
                 template = cfg.get("filename_template") or "tts_{nid}_{field}.{ext}"
                 try:
                     preferred_name = template.format(nid=job["nid"], field=dst, ext=ext)
+                    # Sanitize to prevent path traversal
+                    import re
+                    preferred_name = re.sub(r'[\\/]', '_', preferred_name)
                 except Exception:
                     preferred_name = safe_filename_from_text(text, ext)
                 if len(preferred_name) < 8:
