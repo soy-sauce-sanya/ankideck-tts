@@ -48,8 +48,19 @@ def get_config():
     """Get merged configuration from addon config and defaults."""
     cfg = mw.addonManager.getConfig(__name__) or {}
     merged = dict(DEFAULT_CONFIG)
+
+    user_tts = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
     merged_tts = dict(DEFAULT_CONFIG.get("tts", {}))
-    merged_tts.update((cfg.get("tts") or {}))
+    for key, value in user_tts.items():
+        if key in ("api_keys", "models", "voices", "exts"):
+            base_map = DEFAULT_CONFIG.get("tts", {}).get(key, {})
+            merged_map = dict(base_map) if isinstance(base_map, dict) else {}
+            if isinstance(value, dict):
+                merged_map.update(value)
+            merged_tts[key] = merged_map
+        else:
+            merged_tts[key] = value
+
     merged.update(cfg)
     merged["tts"] = merged_tts
     merged_batch = dict(DEFAULT_CONFIG.get("batch", {}))

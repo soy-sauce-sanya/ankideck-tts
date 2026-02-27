@@ -8,6 +8,12 @@ import json
 import urllib.request
 import urllib.error
 
+PROVIDER_ALIASES = {
+    "dashscope": ("dashscope", "qwen"),
+    "openai": ("openai", "chatgpt"),
+    "elevenlabs": ("elevenlabs", "11labs", "eleven_labs"),
+}
+
 
 def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
     """Download file from URL with progress tracking.
@@ -81,12 +87,25 @@ def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, s
 
 
 def _resolve_api_key(tts: dict, provider: str) -> str:
+    provider_key = (provider or "").strip().lower()
+    candidates = PROVIDER_ALIASES.get(provider_key, (provider_key,))
+
     api_keys = tts.get("api_keys")
     if isinstance(api_keys, dict):
-        api_key = api_keys.get(provider)
-        if api_key:
-            return api_key
-    return tts.get("api_key") or ""
+        normalized_api_keys = {
+            (str(k).strip().lower() if k is not None else ""): v
+            for k, v in api_keys.items()
+        }
+        for candidate in candidates:
+            api_key = normalized_api_keys.get(candidate)
+            if isinstance(api_key, str) and api_key.strip():
+                return api_key.strip()
+
+    for key_name in ("api_key", "apiKey", "apikey"):
+        api_key = tts.get(key_name)
+        if isinstance(api_key, str) and api_key.strip():
+            return api_key.strip()
+    return ""
 
 
 def _resolve_tts_setting(tts: dict, provider: str, key: str, fallback: str) -> str:
@@ -112,7 +131,7 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     """
     tts = cfg.get("tts") or {}
     provider = (tts.get("provider") or "dashscope").lower()
-    api_key = _resolve_api_key(tts, provider)
+    api_key = _resolve_api_key(tts, provider) or _resolve_api_key(cfg, provider)
 
     if not api_key:
         return None, "API key (tts.api_key or tts.api_keys.<provider>) is not set in add-on config."

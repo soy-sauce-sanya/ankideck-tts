@@ -8,7 +8,7 @@ from aqt import mw
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLabel, QCheckBox, QProgressBar,
+    QHeaderView, QLabel, QCheckBox, QProgressBar, QLineEdit,
     qconnect
 )
 from aqt.utils import showInfo
@@ -58,6 +58,7 @@ class TTSDialog(QDialog):
         self.source_field_combo = QComboBox(self)
         self.target_field_combo = QComboBox(self)
         self.provider_combo = QComboBox(self)
+        self.api_key_edit = QLineEdit(self)
         self.tts_model_combo = QComboBox(self)
         self.voice_combo = QComboBox(self)
         self.language_combo = QComboBox(self)
@@ -93,6 +94,7 @@ class TTSDialog(QDialog):
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
         form.addRow("Provider:", self.provider_combo)
+        form.addRow("API key:", self.api_key_edit)
         form.addRow("TTS model:", self.tts_model_combo)
         form.addRow("Voice:", self.voice_combo)
         form.addRow("Language:", self.language_combo)
@@ -120,6 +122,7 @@ class TTSDialog(QDialog):
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
         qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
+        qconnect(self.api_key_edit.editingFinished, self._on_api_key_changed)
         qconnect(self.tts_model_combo.currentIndexChanged, self._on_tts_model_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
@@ -136,6 +139,8 @@ class TTSDialog(QDialog):
         self._load_decks()
         self._load_models()
         self._load_providers()
+        self._setup_api_key_field()
+        self._load_api_key_for_provider()
         self._load_tts_models()
         self._load_voices_and_languages()
         self._select_current_deck()
@@ -289,6 +294,40 @@ class TTSDialog(QDialog):
                 self.provider_combo.setCurrentIndex(i)
                 break
 
+    def _setup_api_key_field(self):
+        """Set API key input behavior."""
+        self.api_key_edit.setClearButtonEnabled(True)
+        try:
+            self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        except Exception:
+            self.api_key_edit.setEchoMode(QLineEdit.Password)
+
+    def _resolve_provider_api_key(self, cfg_tts: dict, provider: str) -> str:
+        """Resolve API key for selected provider from config."""
+        if not isinstance(cfg_tts, dict):
+            return ""
+
+        api_keys = cfg_tts.get("api_keys")
+        if isinstance(api_keys, dict):
+            provider_key = (provider or "").strip().lower()
+            for key, value in api_keys.items():
+                if (str(key).strip().lower() == provider_key) and isinstance(value, str) and value.strip():
+                    return value.strip()
+
+        fallback = cfg_tts.get("api_key")
+        if isinstance(fallback, str):
+            return fallback.strip()
+        return ""
+
+    def _load_api_key_for_provider(self):
+        """Load API key for selected provider into the input field."""
+        cfg = get_config()
+        tts_cfg = cfg.get("tts", {})
+        provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
+        provider_label = self.provider_combo.currentText() or provider
+        self.api_key_edit.setPlaceholderText(f"Enter {provider_label} API key")
+        self.api_key_edit.setText(self._resolve_provider_api_key(tts_cfg, provider))
+
     def _on_provider_changed(self):
         """Handle provider selection change."""
         provider = self.provider_combo.currentData()
@@ -298,8 +337,20 @@ class TTSDialog(QDialog):
                 cfg["tts"] = {}
             cfg["tts"]["provider"] = provider
             mw.addonManager.writeConfig(__name__, cfg)
+            self._load_api_key_for_provider()
             self._load_tts_models()
             self._load_voices_and_languages()
+
+    def _on_api_key_changed(self):
+        """Persist API key for selected provider."""
+        provider = self.provider_combo.currentData() or "dashscope"
+        api_key = (self.api_key_edit.text() or "").strip()
+        cfg = mw.addonManager.getConfig(__name__) or {}
+        tts_cfg = cfg.setdefault("tts", {})
+        api_keys = tts_cfg.setdefault("api_keys", {})
+        api_keys[provider] = api_key
+        tts_cfg["api_key"] = api_key
+        mw.addonManager.writeConfig(__name__, cfg)
 
     def _on_tts_model_changed(self):
         """Handle TTS model selection change."""
