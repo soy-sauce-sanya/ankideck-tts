@@ -481,7 +481,7 @@ class TTSDialog(QDialog):
             return
 
         try:
-            text = note[src]
+            text = strip_html(note[src])
         except Exception:
             text = job.get("text") or ""
 
