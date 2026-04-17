@@ -13,6 +13,9 @@ Supported keys:
 - `tts.api_keys.dashscope`
 - `tts.api_keys.openai`
 - `tts.api_keys.elevenlabs`
+- `tts.api_keys.gemini`
+
+Gemini TTS uses the Google Gemini API with preview TTS models and saves audio as `.wav`.
 
 ## GitHub Pages
 

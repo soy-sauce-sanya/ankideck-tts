@@ -111,10 +111,44 @@ ELEVENLABS_VOICES = [
     {"chinese": "Sam", "english": "yoZ06aMxZJJ28mfd3POQ"},
 ]
 
+GEMINI_VOICES = [
+    {"chinese": "Zephyr - Bright", "english": "Zephyr"},
+    {"chinese": "Puck - Upbeat", "english": "Puck"},
+    {"chinese": "Charon - Informative", "english": "Charon"},
+    {"chinese": "Kore - Firm", "english": "Kore"},
+    {"chinese": "Fenrir - Excitable", "english": "Fenrir"},
+    {"chinese": "Leda - Youthful", "english": "Leda"},
+    {"chinese": "Orus - Firm", "english": "Orus"},
+    {"chinese": "Aoede - Breezy", "english": "Aoede"},
+    {"chinese": "Callirrhoe - Easy-going", "english": "Callirrhoe"},
+    {"chinese": "Autonoe - Bright", "english": "Autonoe"},
+    {"chinese": "Enceladus - Breathy", "english": "Enceladus"},
+    {"chinese": "Iapetus - Clear", "english": "Iapetus"},
+    {"chinese": "Umbriel - Easy-going", "english": "Umbriel"},
+    {"chinese": "Algieba - Smooth", "english": "Algieba"},
+    {"chinese": "Despina - Smooth", "english": "Despina"},
+    {"chinese": "Erinome - Clear", "english": "Erinome"},
+    {"chinese": "Algenib - Gravelly", "english": "Algenib"},
+    {"chinese": "Rasalgethi - Informative", "english": "Rasalgethi"},
+    {"chinese": "Laomedeia - Upbeat", "english": "Laomedeia"},
+    {"chinese": "Achernar - Soft", "english": "Achernar"},
+    {"chinese": "Alnilam - Firm", "english": "Alnilam"},
+    {"chinese": "Schedar - Even", "english": "Schedar"},
+    {"chinese": "Gacrux - Mature", "english": "Gacrux"},
+    {"chinese": "Pulcherrima - Forward", "english": "Pulcherrima"},
+    {"chinese": "Achird - Friendly", "english": "Achird"},
+    {"chinese": "Zubenelgenubi - Casual", "english": "Zubenelgenubi"},
+    {"chinese": "Vindemiatrix - Gentle", "english": "Vindemiatrix"},
+    {"chinese": "Sadachbia - Lively", "english": "Sadachbia"},
+    {"chinese": "Sadaltager - Knowledgeable", "english": "Sadaltager"},
+    {"chinese": "Sulafat - Warm", "english": "Sulafat"},
+]
+
 PROVIDER_MODELS = {
     "dashscope": ["qwen3-tts-flash", "qwen3-tts"],
     "openai": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
     "elevenlabs": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_ttv_v3", "eleven_v3"],
+    "gemini": ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"],
 }
 
 
@@ -148,6 +182,8 @@ def get_provider_voices_and_languages(provider: str) -> Tuple[List[Dict[str, str
         return OPENAI_VOICES, []
     elif provider == "elevenlabs":
         return ELEVENLABS_VOICES, []
+    elif provider == "gemini":
+        return GEMINI_VOICES, []
     return get_voices_and_languages()
 
 

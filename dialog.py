@@ -286,6 +286,7 @@ class TTSDialog(QDialog):
         self.provider_combo.addItem("Qwen (DashScope)", "dashscope")
         self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
         self.provider_combo.addItem("11 Labs", "elevenlabs")
+        self.provider_combo.addItem("Gemini (Google AI)", "gemini")
 
         cfg = get_config()
         current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")

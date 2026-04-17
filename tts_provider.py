@@ -2,16 +2,21 @@
 """TTS synthesis provider for AnkiDeck TTS addon."""
 
 from __future__ import annotations
-from typing import Optional, Tuple, Callable, Dict
+from typing import Optional, Tuple, Callable, Dict, Any
+import base64
+import binascii
 import importlib.util
+import io
 import json
 import urllib.request
 import urllib.error
+import wave
 
 PROVIDER_ALIASES = {
     "dashscope": ("dashscope", "qwen"),
     "openai": ("openai", "chatgpt"),
     "elevenlabs": ("elevenlabs", "11labs", "eleven_labs"),
+    "gemini": ("gemini", "google", "googleai", "google_ai", "google-ai"),
 }
 
 
@@ -61,7 +66,7 @@ def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]]
         return None, f"{e}"
 
 
-def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, str]) -> Tuple[Optional[bytes], Optional[str]]:
+def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> Tuple[Optional[bytes], Optional[str]]:
     if importlib.util.find_spec("requests"):
         import requests
         try:
@@ -86,8 +91,47 @@ def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, s
         return None, f"{e}"
 
 
-def _resolve_api_key(tts: dict, provider: str) -> str:
+def _post_json(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    if importlib.util.find_spec("requests"):
+        import requests
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        except Exception as e:
+            return None, f"{e}"
+        if int(resp.status_code) != 200:
+            return None, f"HTTP {resp.status_code}: {resp.text}"
+        try:
+            return resp.json(), None
+        except Exception as e:
+            return None, f"Invalid JSON response: {e}"
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            if int(resp.status) != 200:
+                return None, f"HTTP {resp.status}"
+            try:
+                return json.loads(resp.read().decode("utf-8")), None
+            except Exception as e:
+                return None, f"Invalid JSON response: {e}"
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="ignore")
+        return None, f"HTTP {e.code}: {err_body}"
+    except Exception as e:
+        return None, f"{e}"
+
+
+def _normalize_provider(provider: str) -> str:
     provider_key = (provider or "").strip().lower()
+    for canonical, aliases in PROVIDER_ALIASES.items():
+        if provider_key == canonical or provider_key in aliases:
+            return canonical
+    return provider_key
+
+
+def _resolve_api_key(tts: dict, provider: str) -> str:
+    provider_key = _normalize_provider(provider)
     candidates = PROVIDER_ALIASES.get(provider_key, (provider_key,))
 
     api_keys = tts.get("api_keys")
@@ -118,7 +162,7 @@ def _resolve_tts_setting(tts: dict, provider: str, key: str, fallback: str) -> s
 
 
 def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
-    """Synthesize text to audio using DashScope TTS API.
+    """Synthesize text to audio using the selected TTS provider.
 
     Args:
         text: Text to synthesize
@@ -130,7 +174,7 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
         If failed, audio_bytes is None and error is a string describing the error.
     """
     tts = cfg.get("tts") or {}
-    provider = (tts.get("provider") or "dashscope").lower()
+    provider = _normalize_provider(tts.get("provider") or "dashscope")
     api_key = _resolve_api_key(tts, provider) or _resolve_api_key(cfg, provider)
 
     if not api_key:
@@ -140,6 +184,8 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
         return _synthesize_openai_tts(text, tts, api_key)
     if provider == "elevenlabs":
         return _synthesize_elevenlabs_tts(text, tts, api_key)
+    if provider == "gemini":
+        return _synthesize_gemini_tts(text, tts, api_key)
     return _synthesize_dashscope_tts(text, tts, api_key, on_download_progress)
 
 
@@ -215,3 +261,69 @@ def _synthesize_elevenlabs_tts(text: str, tts: dict, api_key: str) -> Tuple[Opti
     }
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     return _post_json_for_bytes(url, headers, payload)
+
+
+def _wrap_pcm_as_wav(pcm_bytes: bytes, channels: int = 1, sample_width: int = 2, sample_rate: int = 24000) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return buffer.getvalue()
+
+
+def _synthesize_gemini_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+    model = _resolve_tts_setting(tts, "gemini", "model", "gemini-2.5-flash-preview-tts")
+    voice = _resolve_tts_setting(tts, "gemini", "voice", "Kore")
+    payload = {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": {
+                        "voiceName": voice,
+                    }
+                }
+            },
+        },
+        "model": model,
+    }
+    headers = {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    response_json, err = _post_json(url, headers, payload)
+    if err:
+        return None, err
+
+    candidates = response_json.get("candidates") or []
+    inline_data = None
+    for candidate in candidates:
+        content = candidate.get("content") or {}
+        for part in content.get("parts") or []:
+            part_inline_data = part.get("inlineData") or part.get("inline_data")
+            if isinstance(part_inline_data, dict) and part_inline_data.get("data"):
+                inline_data = part_inline_data
+                break
+        if inline_data:
+            break
+
+    if not inline_data:
+        return None, f"Audio data not found in Gemini response: {json.dumps(response_json)}"
+
+    try:
+        audio_bytes = base64.b64decode(inline_data.get("data") or "")
+    except (binascii.Error, ValueError) as e:
+        return None, f"Failed to decode Gemini audio payload: {e}"
+
+    mime_type = (inline_data.get("mimeType") or inline_data.get("mime_type") or "").lower()
+    if mime_type in ("audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"):
+        return audio_bytes, None
+
+    try:
+        return _wrap_pcm_as_wav(audio_bytes), None
+    except Exception as e:
+        return None, f"Failed to encode Gemini audio as WAV: {e}"
