@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
             "dashscope": "qwen3-tts-flash",
             "openai": "gpt-4o-mini-tts",
             "elevenlabs": "eleven_multilingual_v2",
-            "gemini": "gemini-2.5-flash-preview-tts"
+            "gemini": "gemini-3.1-flash-tts-preview"
         },
         "voices": {
             "dashscope": "Ethan",

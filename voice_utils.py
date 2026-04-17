@@ -148,7 +148,7 @@ PROVIDER_MODELS = {
     "dashscope": ["qwen3-tts-flash", "qwen3-tts"],
     "openai": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
     "elevenlabs": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_ttv_v3", "eleven_v3"],
-    "gemini": ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"],
+    "gemini": ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"],
 }
 
 

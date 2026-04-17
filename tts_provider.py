@@ -273,35 +273,23 @@ def _wrap_pcm_as_wav(pcm_bytes: bytes, channels: int = 1, sample_width: int = 2,
     return buffer.getvalue()
 
 
-def _synthesize_gemini_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
-    model = _resolve_tts_setting(tts, "gemini", "model", "gemini-2.5-flash-preview-tts")
-    voice = _resolve_tts_setting(tts, "gemini", "voice", "Kore")
-    payload = {
-        "contents": [{"parts": [{"text": text}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {
-                        "voiceName": voice,
-                    }
-                }
-            },
-        },
-        "model": model,
-    }
-    headers = {
-        "x-goog-api-key": api_key,
-        "Content-Type": "application/json",
-    }
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    response_json, err = _post_json(url, headers, payload)
-    if err:
-        return None, err
+def _build_gemini_tts_prompt(text: str) -> str:
+    transcript = (text or "").strip()
+    return (
+        "Generate speech audio for the transcript below. "
+        "Speak exactly the transcript text and do not add extra words.\n\n"
+        "<transcript>\n"
+        f"{transcript}\n"
+        "</transcript>"
+    )
 
+
+def _extract_gemini_inline_audio(response_json: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     candidates = response_json.get("candidates") or []
     inline_data = None
+    finish_reason = None
     for candidate in candidates:
+        finish_reason = candidate.get("finishReason") or finish_reason
         content = candidate.get("content") or {}
         for part in content.get("parts") or []:
             part_inline_data = part.get("inlineData") or part.get("inline_data")
@@ -310,9 +298,48 @@ def _synthesize_gemini_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional
                 break
         if inline_data:
             break
+    return inline_data, finish_reason
+
+
+def _synthesize_gemini_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
+    model = _resolve_tts_setting(tts, "gemini", "model", "gemini-3.1-flash-tts-preview")
+    voice = _resolve_tts_setting(tts, "gemini", "voice", "Kore")
+    headers = {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    prompt_text = _build_gemini_tts_prompt(text)
+    response_json = None
+    inline_data = None
+    finish_reason = None
+    for _ in range(2):
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {
+                            "voiceName": voice,
+                        }
+                    }
+                },
+            },
+            "model": model,
+        }
+        response_json, err = _post_json(url, headers, payload)
+        if err:
+            return None, err
+        inline_data, finish_reason = _extract_gemini_inline_audio(response_json)
+        if inline_data:
+            break
+        if finish_reason not in (None, "", "OTHER"):
+            break
 
     if not inline_data:
-        return None, f"Audio data not found in Gemini response: {json.dumps(response_json)}"
+        finish_reason_label = finish_reason or "unknown"
+        return None, f"Audio data not found in Gemini response (finishReason={finish_reason_label}): {json.dumps(response_json)}"
 
     try:
         audio_bytes = base64.b64decode(inline_data.get("data") or "")
