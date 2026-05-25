@@ -59,6 +59,10 @@ class TTSDialog(QDialog):
         self.target_field_combo = QComboBox(self)
         self.provider_combo = QComboBox(self)
         self.api_key_edit = QLineEdit(self)
+        self.api_key_toggle_btn = QPushButton("👁", self)
+        self.api_key_toggle_btn.setFixedWidth(32)
+        self.api_key_toggle_btn.setCheckable(True)
+        self.api_key_toggle_btn.setToolTip("Show/hide API key")
         self.tts_model_combo = QComboBox(self)
         self.voice_combo = QComboBox(self)
         self.language_combo = QComboBox(self)
@@ -94,7 +98,10 @@ class TTSDialog(QDialog):
         form.addRow("Source field (text → API):", self.source_field_combo)
         form.addRow("Target field (will get audio):", self.target_field_combo)
         form.addRow("Provider:", self.provider_combo)
-        form.addRow("API key:", self.api_key_edit)
+        api_key_layout = QHBoxLayout()
+        api_key_layout.addWidget(self.api_key_edit)
+        api_key_layout.addWidget(self.api_key_toggle_btn)
+        form.addRow("API key:", api_key_layout)
         form.addRow("TTS model:", self.tts_model_combo)
         form.addRow("Voice:", self.voice_combo)
         form.addRow("Language:", self.language_combo)
@@ -123,6 +130,7 @@ class TTSDialog(QDialog):
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
         qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
         qconnect(self.api_key_edit.editingFinished, self._on_api_key_changed)
+        qconnect(self.api_key_toggle_btn.clicked, self._toggle_api_key_visibility)
         qconnect(self.tts_model_combo.currentIndexChanged, self._on_tts_model_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
@@ -302,6 +310,21 @@ class TTSDialog(QDialog):
             self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         except Exception:
             self.api_key_edit.setEchoMode(QLineEdit.Password)
+
+    def _toggle_api_key_visibility(self):
+        """Toggle API key field between visible and hidden."""
+        try:
+            normal = QLineEdit.EchoMode.Normal
+            password = QLineEdit.EchoMode.Password
+        except Exception:
+            normal = QLineEdit.Normal
+            password = QLineEdit.Password
+        if self.api_key_edit.echoMode() == password:
+            self.api_key_edit.setEchoMode(normal)
+            self.api_key_toggle_btn.setText("🔒")
+        else:
+            self.api_key_edit.setEchoMode(password)
+            self.api_key_toggle_btn.setText("👁")
 
     def _resolve_provider_api_key(self, cfg_tts: dict, provider: str) -> str:
         """Resolve API key for selected provider from config."""
