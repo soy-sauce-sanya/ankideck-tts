@@ -189,32 +189,55 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     return _synthesize_dashscope_tts(text, tts, api_key, on_download_progress)
 
 
+def _extract_dashscope_audio_url(resp_json: Dict[str, Any]) -> Optional[str]:
+    output = resp_json.get("output") or {}
+    audio_obj = output.get("audio")
+    if isinstance(audio_obj, dict) and audio_obj.get("url"):
+        return audio_obj["url"]
+    for choice in (output.get("choices") or []):
+        message = (choice if isinstance(choice, dict) else {}).get("message") or {}
+        for part in (message.get("content") or []):
+            if not isinstance(part, dict):
+                continue
+            audio_val = part.get("audio")
+            if isinstance(audio_val, str) and audio_val.startswith("http"):
+                return audio_val
+            if isinstance(audio_val, dict) and audio_val.get("url"):
+                return audio_val["url"]
+    return None
+
+
 def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
     model = _resolve_tts_setting(tts, "dashscope", "model", "qwen3-tts-flash")
     voice = _resolve_tts_setting(tts, "dashscope", "voice", "Cherry")
     lang = tts.get("language_type") or "Chinese"
     api_key = api_key or tts.get("api_key") or ""
 
-    if importlib.util.find_spec("dashscope") is None:
-        return None, "Module 'dashscope' is not installed in Anki's environment."
+    base_url = (tts.get("dashscope_base_url") or "https://dashscope.aliyuncs.com").rstrip("/")
+    url = f"{base_url}/api/v1/services/aigc/multimodal-generation/generation"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "input": {
+            "text": text,
+            "voice": voice,
+            "language_type": lang,
+        },
+    }
 
-    import dashscope
+    resp_json, err = _post_json(url, headers, payload)
+    if err:
+        return None, f"DashScope error: {err}"
 
-    try:
-        response = dashscope.audio.qwen_tts.SpeechSynthesizer.call(
-            model=model, api_key=api_key, text=text, voice=voice, language_type=lang
-        )
-    except Exception as e:
-        return None, f"DashScope error: {e}"
+    if resp_json.get("code"):
+        msg = resp_json.get("message", "unknown error")
+        return None, f"DashScope API error ({resp_json['code']}): {msg}"
 
-    status = getattr(response, "status_code", None)
-    if status != 200:
-        msg = getattr(response, "message", "unknown error")
-        return None, f"API error (status={status}): {msg}"
-
-    try:
-        audio_url = response.output['audio']['url']
-    except Exception:
+    audio_url = _extract_dashscope_audio_url(resp_json)
+    if not audio_url:
         return None, "Audio URL not found in API response."
 
     data, err = http_get_bytes_stream(audio_url, on_progress=on_download_progress)
