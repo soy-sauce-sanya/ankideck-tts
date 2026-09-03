@@ -72,8 +72,7 @@ class TTSPanel(QWidget):
         self.overwrite_chk.setChecked(bool(cfg.get("batch", {}).get("overwrite", False)))
 
         # Buttons
-        self.process_current_btn = QPushButton("Process One", self)
-        self.process_selected_btn = QPushButton("Process Many", self)
+        self.process_btn = QPushButton("Process", self)
         self.clear_btn = QPushButton("Clear", self)
         self.close_btn = QPushButton("Hide TTS", self)
 
@@ -127,8 +126,7 @@ class TTSPanel(QWidget):
         top.addLayout(settings)
 
         btns = QHBoxLayout()
-        btns.addWidget(self.process_current_btn)
-        btns.addWidget(self.process_selected_btn)
+        btns.addWidget(self.process_btn)
         btns.addStretch(1)
         btns.addWidget(self.clear_btn)
         btns.addWidget(self.close_btn)
@@ -139,8 +137,7 @@ class TTSPanel(QWidget):
         top.addWidget(self.batch_bar)
 
         # Signals
-        qconnect(self.process_current_btn.clicked, self.process_current_note)
-        qconnect(self.process_selected_btn.clicked, self.process_selected_notes)
+        qconnect(self.process_btn.clicked, self.process_notes)
         qconnect(self.clear_btn.clicked, self._clear_queue)
         qconnect(self.close_btn.clicked, self._on_close_clicked)
         qconnect(self.deck_combo.activated, self._on_deck_selected)
@@ -668,23 +665,16 @@ class TTSPanel(QWidget):
             res = bg()
             on_done(res)
 
-    def process_current_note(self):
-        """Process the current note or first selected note."""
+    def process_notes(self):
+        """Process all selected notes, or the current review note."""
         nids = selected_note_ids_in_browser()
-        nid = (nids[0] if nids else None) or current_reviewer_note_id()
-        if not nid:
+        if not nids:
+            nid = current_reviewer_note_id()
+            nids = [nid] if nid else []
+        if not nids:
             showInfo("Open the Browser and select a note, or open a card in Review.")
             return
-        self._enqueue_notes([nid])
-        self._start_queue()
-
-    def process_selected_notes(self):
-        """Process all selected notes in the browser."""
-        sel = selected_note_ids_in_browser()
-        if not sel:
-            showInfo("Nothing selected in the Browser. Select notes and try again.")
-            return
-        self._enqueue_notes(list(sel))
+        self._enqueue_notes(list(nids))
         self._start_queue()
 
 
