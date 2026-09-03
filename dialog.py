@@ -72,8 +72,8 @@ class TTSPanel(QWidget):
         self.overwrite_chk.setChecked(bool(cfg.get("batch", {}).get("overwrite", False)))
 
         # Buttons
-        self.process_current_btn = QPushButton("Process current/selected", self)
-        self.process_selected_btn = QPushButton("Process selected (Browser)", self)
+        self.process_current_btn = QPushButton("Process One", self)
+        self.process_selected_btn = QPushButton("Process Many", self)
         self.clear_btn = QPushButton("Clear", self)
         self.close_btn = QPushButton("Hide TTS", self)
 
