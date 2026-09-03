@@ -36,6 +36,14 @@ def _add_menu_action() -> None:
     mw.form.menuTools.addAction(action)
 
 
+def _add_browser_menu_action(browser) -> None:
+    """Add an action for reopening the TTS dock inside the Browser."""
+    action = QAction(f"Show {ADDON_TITLE}", browser)
+    action.setShortcut(QKeySequence("Ctrl+Alt+T"))
+    qconnect(action.triggered, open_tts_dialog)
+    browser.form.menuqt_accel_view.addAction(action)
+
+
 def _on_main_window_did_init(_mw=None, *args, **kwargs):
     """Initialize addon after main window is ready."""
     _add_menu_action()
@@ -44,3 +52,4 @@ def _on_main_window_did_init(_mw=None, *args, **kwargs):
 # Register hooks
 gui_hooks.top_toolbar_did_init_links.append(_add_top_toolbar_link)
 gui_hooks.main_window_did_init.append(_on_main_window_did_init)
+gui_hooks.browser_menus_did_init.append(_add_browser_menu_action)

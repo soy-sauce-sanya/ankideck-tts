@@ -7,10 +7,10 @@ from typing import Optional, List, Dict
 from anki.collection import SearchNode
 from aqt import mw, dialogs
 from aqt.qt import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QDockWidget,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QLabel, QCheckBox, QProgressBar, QLineEdit,
-    qconnect
+    Qt, qconnect
 )
 from aqt.utils import showInfo
 
@@ -46,13 +46,12 @@ except Exception:
 ADDON_TITLE = "AnkiDeck TTS"
 
 
-class TTSDialog(QDialog):
-    """Main dialog for batch TTS processing."""
+class TTSPanel(QWidget):
+    """Dockable panel for batch TTS processing inside the Browser."""
 
     def __init__(self, parent=None):
         super().__init__(parent or mw)
-        self.setWindowTitle(ADDON_TITLE)
-        self.resize(900, 680)
+        self.browser = parent
 
         self.deck_combo = QComboBox(self)
         self.model_combo = QComboBox(self)
@@ -76,7 +75,7 @@ class TTSDialog(QDialog):
         self.process_current_btn = QPushButton("Process current/selected", self)
         self.process_selected_btn = QPushButton("Process selected (Browser)", self)
         self.clear_btn = QPushButton("Clear", self)
-        self.close_btn = QPushButton("Close", self)
+        self.close_btn = QPushButton("Hide TTS", self)
 
         # Queue table: Text | State | Progress
         self.table = QTableWidget(self)
@@ -92,24 +91,40 @@ class TTSDialog(QDialog):
         self.batch_bar.setValue(0)
         self.batch_bar.setFormat("%p% processed")
 
-        # Layout
-        form = QFormLayout()
-        form.addRow("Deck:", self.deck_combo)
-        form.addRow("Note type:", self.model_combo)
-        form.addRow("Source field (text → API):", self.source_field_combo)
-        form.addRow("Target field (will get audio):", self.target_field_combo)
-        form.addRow("Provider:", self.provider_combo)
+        # Compact two-column settings layout for the Browser dock.
+        settings = QGridLayout()
+        settings.addWidget(QLabel("Deck:"), 0, 0)
+        settings.addWidget(self.deck_combo, 0, 1)
+        settings.addWidget(QLabel("Note type:"), 0, 2)
+        settings.addWidget(self.model_combo, 0, 3)
+        settings.addWidget(QLabel("Source field (text → API):"), 1, 0)
+        settings.addWidget(self.source_field_combo, 1, 1)
+        settings.addWidget(QLabel("Target field (will get audio):"), 1, 2)
+        settings.addWidget(self.target_field_combo, 1, 3)
+        settings.addWidget(QLabel("Provider:"), 2, 0)
+        settings.addWidget(self.provider_combo, 2, 1)
+
+        api_key_widget = QWidget(self)
         api_key_layout = QHBoxLayout()
+        api_key_layout.setContentsMargins(0, 0, 0, 0)
         api_key_layout.addWidget(self.api_key_edit)
         api_key_layout.addWidget(self.api_key_toggle_btn)
-        form.addRow("API key:", api_key_layout)
-        form.addRow("TTS model:", self.tts_model_combo)
-        form.addRow("Voice:", self.voice_combo)
-        form.addRow("Language:", self.language_combo)
-        form.addRow("Overwrite:", self.overwrite_chk)
+        api_key_widget.setLayout(api_key_layout)
+        settings.addWidget(QLabel("API key:"), 2, 2)
+        settings.addWidget(api_key_widget, 2, 3)
+        settings.addWidget(QLabel("TTS model:"), 3, 0)
+        settings.addWidget(self.tts_model_combo, 3, 1)
+        settings.addWidget(QLabel("Voice:"), 3, 2)
+        settings.addWidget(self.voice_combo, 3, 3)
+        settings.addWidget(QLabel("Language:"), 4, 0)
+        settings.addWidget(self.language_combo, 4, 1)
+        settings.addWidget(QLabel("Overwrite:"), 4, 2)
+        settings.addWidget(self.overwrite_chk, 4, 3)
+        settings.setColumnStretch(1, 1)
+        settings.setColumnStretch(3, 1)
 
         top = QVBoxLayout(self)
-        top.addLayout(form)
+        top.addLayout(settings)
 
         btns = QHBoxLayout()
         btns.addWidget(self.process_current_btn)
@@ -164,9 +179,12 @@ class TTSDialog(QDialog):
         self._queue_running = False
 
     def _on_close_clicked(self):
-        """Clear queue and close the dialog."""
-        self._clear_queue()
-        self.close()
+        """Hide the containing Browser dock without clearing its queue."""
+        parent = self.parentWidget()
+        if isinstance(parent, QDockWidget):
+            parent.hide()
+        else:
+            self.hide()
 
     def _load_decks(self):
         """Load all decks into the deck combo box."""
@@ -202,16 +220,14 @@ class TTSDialog(QDialog):
             pass
 
     def _on_deck_selected(self, *_args):
-        """Open the Browser filtered to the deck selected by the user."""
+        """Filter the containing Browser to the deck selected by the user."""
         deck_name = self.deck_combo.currentText()
         if not deck_name:
             return
         try:
-            browser = dialogs.open("Browser", mw, search=(SearchNode(deck=deck_name),))
-            browser.raise_()
-            browser.activateWindow()
+            self.browser.search_for_terms(SearchNode(deck=deck_name))
         except Exception as exc:
-            showInfo(f"Could not open the Browser: {exc}")
+            showInfo(f"Could not browse the selected deck: {exc}")
 
     def _load_models(self):
         """Load all note types into the model combo box."""
@@ -672,17 +688,52 @@ class TTSDialog(QDialog):
         self._start_queue()
 
 
-# Keep a single dialog instance referenced to avoid GC
-_dialog_instance: Optional[TTSDialog] = None
+# Keep the dock and panel referenced while their Browser is open.
+_panel_instance: Optional[TTSPanel] = None
+_dock_instance: Optional[QDockWidget] = None
+_browser_instance = None
 
 
 def open_tts_dialog():
-    """Open or show the TTS dialog."""
-    global _dialog_instance
-    if _dialog_instance is None:
-        _dialog_instance = TTSDialog(mw)
+    """Open the Browser and show the TTS panel docked inside it."""
+    global _panel_instance, _dock_instance, _browser_instance
+
+    browser = dialogs.open("Browser", mw)
+    if _dock_instance is None or _browser_instance is not browser:
+        dock = QDockWidget(ADDON_TITLE, browser)
+        dock.setObjectName("AnkiDeckTTSDock")
+        try:
+            bottom_area = Qt.DockWidgetArea.BottomDockWidgetArea
+            dock_features = (
+                QDockWidget.DockWidgetFeature.DockWidgetClosable
+                | QDockWidget.DockWidgetFeature.DockWidgetMovable
+            )
+        except Exception:
+            bottom_area = Qt.BottomDockWidgetArea
+            dock_features = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable
+        dock.setAllowedAreas(bottom_area)
+        dock.setFeatures(dock_features)
+
+        panel = TTSPanel(browser)
+        dock.setWidget(panel)
+        browser.addDockWidget(bottom_area, dock)
+
+        _panel_instance = panel
+        _dock_instance = dock
+        _browser_instance = browser
+
+        def clear_references(*_args):
+            global _panel_instance, _dock_instance, _browser_instance
+            if _dock_instance is dock:
+                _panel_instance = None
+                _dock_instance = None
+                _browser_instance = None
+
+        qconnect(dock.destroyed, clear_references)
     else:
-        _dialog_instance.refresh_decks()
-    _dialog_instance.show()
-    _dialog_instance.raise_()
-    _dialog_instance.activateWindow()
+        _panel_instance.refresh_decks()
+
+    _dock_instance.show()
+    _dock_instance.raise_()
+    browser.raise_()
+    browser.activateWindow()
