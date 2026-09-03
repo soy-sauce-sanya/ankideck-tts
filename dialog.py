@@ -4,7 +4,8 @@
 from __future__ import annotations
 from typing import Optional, List, Dict
 
-from aqt import mw
+from anki.collection import SearchNode
+from aqt import mw, dialogs
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
@@ -127,6 +128,7 @@ class TTSDialog(QDialog):
         qconnect(self.process_selected_btn.clicked, self.process_selected_notes)
         qconnect(self.clear_btn.clicked, self._clear_queue)
         qconnect(self.close_btn.clicked, self._on_close_clicked)
+        qconnect(self.deck_combo.activated, self._on_deck_selected)
         qconnect(self.model_combo.currentIndexChanged, self._on_model_changed)
         qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
         qconnect(self.api_key_edit.editingFinished, self._on_api_key_changed)
@@ -199,11 +201,33 @@ class TTSDialog(QDialog):
         except Exception:
             pass
 
+    def _on_deck_selected(self, *_args):
+        """Open the Browser filtered to the deck selected by the user."""
+        deck_name = self.deck_combo.currentText()
+        if not deck_name:
+            return
+        try:
+            browser = dialogs.open("Browser", mw, search=(SearchNode(deck=deck_name),))
+            browser.raise_()
+            browser.activateWindow()
+        except Exception as exc:
+            showInfo(f"Could not open the Browser: {exc}")
+
     def _load_models(self):
         """Load all note types into the model combo box."""
-        self.model_combo.clear()
-        for name, mid in all_model_names_and_ids():
-            self.model_combo.addItem(name, mid)
+        last_model_id = get_config().get("last_note_type_id")
+        self.model_combo.blockSignals(True)
+        try:
+            self.model_combo.clear()
+            for name, mid in all_model_names_and_ids():
+                self.model_combo.addItem(name, mid)
+            if last_model_id is not None:
+                for i in range(self.model_combo.count()):
+                    if str(self.model_combo.itemData(i)) == str(last_model_id):
+                        self.model_combo.setCurrentIndex(i)
+                        break
+        finally:
+            self.model_combo.blockSignals(False)
 
     def _on_model_changed(self):
         """Update field combos when model selection changes."""
@@ -214,6 +238,9 @@ class TTSDialog(QDialog):
         model = model_by_id_or_name(model_id) or model_by_id_or_name(model_name)
         if not model:
             return
+        cfg = get_raw_config()
+        cfg["last_note_type_id"] = model_id
+        write_raw_config(cfg)
         fields = field_names_for_model(model)
         for fn in fields:
             self.source_field_combo.addItem(fn)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from aqt import mw
 
 DEFAULT_CONFIG = {
+    "last_note_type_id": None,
     "tts": {
         "provider": "dashscope",
         "api_key": "",
