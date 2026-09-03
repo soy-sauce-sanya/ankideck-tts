@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 from typing import Optional, List, Dict
+import time
 
 from anki.collection import SearchNode
 from aqt import mw, dialogs
@@ -24,6 +25,7 @@ from .anki_helpers import (
     current_reviewer_note_id
 )
 from .media_utils import add_media_bytes, update_note
+from .provider_catalog import fetch_provider_catalog
 from .tts_provider import synthesize_tts_bytes
 from .text_utils import strip_html, safe_filename_from_text, render_sound_tag
 from .voice_utils import (
@@ -44,6 +46,7 @@ except Exception:
 
 
 ADDON_TITLE = "AnkiDeck TTS"
+CATALOG_CACHE_SECONDS = 24 * 60 * 60
 
 
 class TTSPanel(QWidget):
@@ -65,9 +68,17 @@ class TTSPanel(QWidget):
         self.api_key_toggle_btn.setFixedWidth(32)
         self.api_key_toggle_btn.setCheckable(True)
         self.api_key_toggle_btn.setToolTip("Show/hide API key")
+        self.refresh_catalog_btn = QPushButton("↻", self)
+        self.refresh_catalog_btn.setFixedWidth(32)
+        self.refresh_catalog_btn.setToolTip("Refresh models and voices from the provider")
         self.tts_model_combo = QComboBox(self)
+        self.tts_model_combo.setEditable(True)
+        self.tts_model_combo.setToolTip("Select a model or enter its ID")
         self.voice_combo = QComboBox(self)
+        self.voice_combo.setEditable(True)
+        self.voice_combo.setToolTip("Select a voice or enter its ID")
         self.language_combo = QComboBox(self)
+        self.catalog_status_label = QLabel("", self)
 
         cfg = get_config()
         self.overwrite_chk = QCheckBox("Replace existing audio", self)
@@ -129,7 +140,16 @@ class TTSPanel(QWidget):
         settings.addWidget(QLabel("Target field:"), 1, 2)
         settings.addWidget(self.target_field_combo, 1, 3)
         settings.addWidget(QLabel("Provider:"), 2, 0)
-        settings.addWidget(self.provider_combo, 2, 1)
+
+        provider_widget = QWidget(self)
+        provider_layout = QHBoxLayout()
+        provider_layout.setContentsMargins(0, 0, 0, 0)
+        provider_layout.addWidget(self.provider_combo)
+        provider_layout.addWidget(self.refresh_catalog_btn)
+        provider_widget.setLayout(provider_layout)
+        provider_widget.setMinimumWidth(0)
+        provider_widget.setSizePolicy(expanding, fixed)
+        settings.addWidget(provider_widget, 2, 1)
 
         api_key_widget = QWidget(self)
         api_key_layout = QHBoxLayout()
@@ -157,6 +177,7 @@ class TTSPanel(QWidget):
 
         btns = QHBoxLayout()
         btns.addWidget(self.process_btn)
+        btns.addWidget(self.catalog_status_label)
         btns.addStretch(1)
         btns.addWidget(self.clear_btn)
         btns.addWidget(self.close_btn)
@@ -175,13 +196,17 @@ class TTSPanel(QWidget):
         qconnect(self.provider_combo.currentIndexChanged, self._on_provider_changed)
         qconnect(self.api_key_edit.editingFinished, self._on_api_key_changed)
         qconnect(self.api_key_toggle_btn.clicked, self._toggle_api_key_visibility)
+        qconnect(self.refresh_catalog_btn.clicked, self._refresh_catalog)
         qconnect(self.tts_model_combo.currentIndexChanged, self._on_tts_model_changed)
         qconnect(self.voice_combo.currentIndexChanged, self._on_voice_changed)
+        qconnect(self.tts_model_combo.lineEdit().editingFinished, self._on_tts_model_changed)
+        qconnect(self.voice_combo.lineEdit().editingFinished, self._on_voice_changed)
         qconnect(self.language_combo.currentIndexChanged, self._on_language_changed)
 
         # Queue state
         self.jobs: List[Dict] = []
         self._queue_running = False
+        self._catalog_refreshing = False
 
         # Voice/language data
         self.voices_data = []
@@ -197,6 +222,7 @@ class TTSPanel(QWidget):
         self._load_voices_and_languages()
         self._select_current_deck()
         self._on_model_changed()
+        self._refresh_catalog_if_stale()
 
     def _clear_queue(self):
         """Clear the queue table and job list."""
@@ -212,6 +238,130 @@ class TTSPanel(QWidget):
             parent.hide()
         else:
             self.hide()
+
+    def _cached_catalog(self, provider: str) -> dict:
+        """Return a validated cached catalog entry for a provider."""
+        cache = (get_config().get("tts", {}) or {}).get("catalog_cache", {})
+        entry = cache.get(provider, {}) if isinstance(cache, dict) else {}
+        return entry if isinstance(entry, dict) else {}
+
+    def _set_catalog_status(self, text: str, tooltip: str = "") -> None:
+        self.catalog_status_label.setText(text)
+        self.catalog_status_label.setToolTip(tooltip or text)
+
+    def _refresh_catalog_if_stale(self) -> None:
+        """Refresh supported provider catalogs at most once per day."""
+        provider = self.provider_combo.currentData() or "dashscope"
+        if provider == "dashscope":
+            self.refresh_catalog_btn.setEnabled(False)
+            self._set_catalog_status("Built-in catalog")
+            return
+
+        self.refresh_catalog_btn.setEnabled(True)
+        cached = self._cached_catalog(provider)
+        updated_at = float(cached.get("updated_at") or 0)
+        age = max(0, time.time() - updated_at) if updated_at else None
+        if age is not None and age < CATALOG_CACHE_SECONDS:
+            hours = int(age // 3600)
+            self._set_catalog_status("Updated recently" if hours == 0 else f"Updated {hours}h ago")
+            return
+
+        api_key = self._resolve_provider_api_key(get_config().get("tts", {}), provider)
+        if not api_key:
+            self._set_catalog_status("Add API key to refresh")
+            return
+        self._refresh_catalog()
+
+    def _refresh_catalog(self, *_args) -> None:
+        """Fetch the selected provider catalog without blocking Anki."""
+        if self._catalog_refreshing:
+            return
+        provider = self.provider_combo.currentData() or "dashscope"
+        if provider == "dashscope":
+            self._set_catalog_status("Built-in catalog")
+            return
+        api_key = self._resolve_provider_api_key(get_config().get("tts", {}), provider)
+        if not api_key:
+            self._set_catalog_status("Add API key to refresh")
+            return
+
+        previous = self._cached_catalog(provider)
+        bundled_models = set(get_provider_models(provider))
+        bundled_voices, _languages = get_provider_voices_and_languages(provider)
+        bundled_voice_ids = {
+            str(voice.get("english"))
+            for voice in bundled_voices
+            if isinstance(voice, dict) and voice.get("english")
+        }
+        self._catalog_refreshing = True
+        self.refresh_catalog_btn.setEnabled(False)
+        self._set_catalog_status("Refreshing…")
+
+        def background():
+            return fetch_provider_catalog(provider, api_key)
+
+        def on_done(result_or_future):
+            try:
+                result = result_or_future.result() if hasattr(result_or_future, "result") else result_or_future
+                catalog, error = result
+            except Exception as exc:
+                catalog, error = None, str(exc)
+
+            self._catalog_refreshing = False
+            try:
+                current_provider = self.provider_combo.currentData() or "dashscope"
+                self.refresh_catalog_btn.setEnabled(current_provider != "dashscope")
+            except RuntimeError:
+                current_provider = None
+            if error or not catalog:
+                if current_provider == provider:
+                    fallback = "Using saved catalog" if previous else "Refresh failed"
+                    self._set_catalog_status(fallback, error or "No catalog returned")
+                return
+
+            old_models = bundled_models | {
+                model for model in previous.get("models", []) if isinstance(model, str)
+            }
+            old_voices = {
+                str(voice.get("english"))
+                for voice in previous.get("voices", [])
+                if isinstance(voice, dict) and voice.get("english")
+            } | bundled_voice_ids
+            new_models = {
+                model for model in catalog.get("models", []) if isinstance(model, str)
+            }
+            new_voices = {
+                str(voice.get("english"))
+                for voice in catalog.get("voices", [])
+                if isinstance(voice, dict) and voice.get("english")
+            }
+            added = len(new_models - old_models) + len(new_voices - old_voices)
+
+            cfg = get_raw_config()
+            tts_cfg = cfg.setdefault("tts", {})
+            cache = tts_cfg.setdefault("catalog_cache", {})
+            cache[provider] = {
+                "updated_at": time.time(),
+                "models": catalog.get("models", []),
+                "voices": catalog.get("voices", []),
+                "new_models": sorted(new_models - old_models),
+                "new_voices": sorted(new_voices - old_voices),
+            }
+            write_raw_config(cfg)
+
+            if current_provider == provider:
+                self._load_tts_models()
+                self._load_voices_and_languages()
+                self._set_catalog_status(f"{added} new items" if added else "Catalog is current")
+            elif current_provider:
+                self._refresh_catalog_if_stale()
+
+        try:
+            mw.taskman.run_in_background(background, on_done)
+        except Exception as exc:
+            self._catalog_refreshing = False
+            self.refresh_catalog_btn.setEnabled(True)
+            self._set_catalog_status("Refresh failed", str(exc))
 
     def _load_decks(self):
         """Load all decks into the deck combo box."""
@@ -301,18 +451,45 @@ class TTSPanel(QWidget):
         sel(self.target_field_combo, ["Audio", "Pronunciation", "BackAudio", "Sound", "AudioBack"])
 
     def _load_voices_and_languages(self):
-        """Load voices and languages from voices.txt file."""
+        """Load bundled voices plus any cached provider voices."""
         cfg = get_config()
         tts_cfg = cfg.get("tts", {})
         provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
 
-        self.voices_data, self.languages_data = get_provider_voices_and_languages(provider)
+        bundled_voices, bundled_languages = get_provider_voices_and_languages(provider)
+        self.voices_data = list(bundled_voices)
+        self.languages_data = list(bundled_languages)
+        cached = self._cached_catalog(provider)
+        new_voice_ids = set(cached.get("new_voices", []))
+        known_voice_ids = {str(voice.get("english")) for voice in self.voices_data}
+        for voice in cached.get("voices", []):
+            if isinstance(voice, dict) and voice.get("english") and str(voice["english"]) not in known_voice_ids:
+                self.voices_data.append(voice)
+                known_voice_ids.add(str(voice["english"]))
 
         # Populate voice combo box
-        self.voice_combo.clear()
-        for voice in self.voices_data:
-            display_name = get_voice_display_name(voice)
-            self.voice_combo.addItem(display_name, voice['english'])
+        self.voice_combo.blockSignals(True)
+        try:
+            self.voice_combo.clear()
+            for voice in self.voices_data:
+                display_name = get_voice_display_name(voice)
+                if str(voice.get("english")) in new_voice_ids:
+                    display_name += " · New"
+                self.voice_combo.addItem(display_name, voice['english'])
+
+            voices_cfg = tts_cfg.get("voices") or {}
+            current_voice = voices_cfg.get(provider) or tts_cfg.get("voice", "Ethan")
+            selected = False
+            for i in range(self.voice_combo.count()):
+                if self.voice_combo.itemData(i) == current_voice:
+                    self.voice_combo.setCurrentIndex(i)
+                    selected = True
+                    break
+            if current_voice and not selected:
+                self.voice_combo.addItem(str(current_voice), str(current_voice))
+                self.voice_combo.setCurrentIndex(self.voice_combo.count() - 1)
+        finally:
+            self.voice_combo.blockSignals(False)
 
         # Populate language combo box
         self.language_combo.clear()
@@ -320,15 +497,7 @@ class TTSPanel(QWidget):
             self.language_combo.addItem(lang, language_display_to_api_format(lang))
 
         # Select current voice and language from config
-        voices_cfg = tts_cfg.get("voices") or {}
-        current_voice = voices_cfg.get(provider) or tts_cfg.get("voice", "Ethan")
         current_language_api = tts_cfg.get("language_type", "Chinese")
-
-        # Find and select the current voice
-        for i in range(self.voice_combo.count()):
-            if self.voice_combo.itemData(i) == current_voice:
-                self.voice_combo.setCurrentIndex(i)
-                break
 
         # Find and select the current language
         if self.language_combo.count() == 0:
@@ -341,37 +510,52 @@ class TTSPanel(QWidget):
                     break
 
     def _load_tts_models(self):
-        """Load provider-specific TTS models into the combo box."""
+        """Load bundled models plus any cached provider models."""
         cfg = get_config()
         tts_cfg = cfg.get("tts", {})
         provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
-        models = get_provider_models(provider)
-
-        self.tts_model_combo.clear()
-        for model in models:
-            self.tts_model_combo.addItem(model, model)
+        models = list(get_provider_models(provider))
+        cached = self._cached_catalog(provider)
+        new_models = set(cached.get("new_models", []))
+        for model in cached.get("models", []):
+            if isinstance(model, str) and model and model not in models:
+                models.append(model)
 
         current_models = tts_cfg.get("models") or {}
         current_model = current_models.get(provider) or tts_cfg.get("model")
-        for i in range(self.tts_model_combo.count()):
-            if self.tts_model_combo.itemData(i) == current_model:
-                self.tts_model_combo.setCurrentIndex(i)
-                break
+        self.tts_model_combo.blockSignals(True)
+        try:
+            self.tts_model_combo.clear()
+            for model in models:
+                label = f"{model} · New" if model in new_models else model
+                self.tts_model_combo.addItem(label, model)
+            if current_model and current_model not in models:
+                self.tts_model_combo.addItem(str(current_model), str(current_model))
+            for i in range(self.tts_model_combo.count()):
+                if self.tts_model_combo.itemData(i) == current_model:
+                    self.tts_model_combo.setCurrentIndex(i)
+                    break
+        finally:
+            self.tts_model_combo.blockSignals(False)
 
     def _load_providers(self):
         """Load provider options into the combo box."""
-        self.provider_combo.clear()
-        self.provider_combo.addItem("Qwen (DashScope)", "dashscope")
-        self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
-        self.provider_combo.addItem("11 Labs", "elevenlabs")
-        self.provider_combo.addItem("Gemini (Google AI)", "gemini")
+        self.provider_combo.blockSignals(True)
+        try:
+            self.provider_combo.clear()
+            self.provider_combo.addItem("Qwen (DashScope)", "dashscope")
+            self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
+            self.provider_combo.addItem("11 Labs", "elevenlabs")
+            self.provider_combo.addItem("Gemini (Google AI)", "gemini")
 
-        cfg = get_config()
-        current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
-        for i in range(self.provider_combo.count()):
-            if self.provider_combo.itemData(i) == current_provider:
-                self.provider_combo.setCurrentIndex(i)
-                break
+            cfg = get_config()
+            current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
+            for i in range(self.provider_combo.count()):
+                if self.provider_combo.itemData(i) == current_provider:
+                    self.provider_combo.setCurrentIndex(i)
+                    break
+        finally:
+            self.provider_combo.blockSignals(False)
 
     def _setup_api_key_field(self):
         """Set API key input behavior."""
@@ -434,6 +618,7 @@ class TTSPanel(QWidget):
             self._load_api_key_for_provider()
             self._load_tts_models()
             self._load_voices_and_languages()
+            self._refresh_catalog_if_stale()
 
     def _on_api_key_changed(self):
         """Persist API key for selected provider."""
@@ -445,10 +630,19 @@ class TTSPanel(QWidget):
         api_keys[provider] = api_key
         tts_cfg["api_key"] = api_key
         write_raw_config(cfg)
+        self._refresh_catalog_if_stale()
+
+    @staticmethod
+    def _editable_combo_value(combo: QComboBox) -> str:
+        """Return item data for a selection, or the manually entered text."""
+        index = combo.currentIndex()
+        if index >= 0 and combo.currentText() == combo.itemText(index):
+            return str(combo.itemData(index) or combo.currentText()).strip()
+        return combo.currentText().strip()
 
     def _on_tts_model_changed(self):
         """Handle TTS model selection change."""
-        model = self.tts_model_combo.currentData()
+        model = self._editable_combo_value(self.tts_model_combo)
         if model:
             cfg = get_raw_config()
             cfg.setdefault("tts", {})
@@ -461,7 +655,7 @@ class TTSPanel(QWidget):
 
     def _on_voice_changed(self):
         """Handle voice selection change."""
-        voice_english = self.voice_combo.currentData()
+        voice_english = self._editable_combo_value(self.voice_combo)
         if voice_english:
             # Update config
             cfg = get_raw_config()
