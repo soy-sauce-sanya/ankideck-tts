@@ -10,7 +10,7 @@ from aqt.qt import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QDockWidget,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QLabel, QCheckBox, QProgressBar, QLineEdit,
-    Qt, qconnect
+    QSizePolicy, Qt, qconnect
 )
 from aqt.utils import showInfo
 
@@ -56,7 +56,9 @@ class TTSPanel(QWidget):
         self.deck_combo = QComboBox(self)
         self.model_combo = QComboBox(self)
         self.source_field_combo = QComboBox(self)
+        self.source_field_combo.setToolTip("Text sent to the TTS provider")
         self.target_field_combo = QComboBox(self)
+        self.target_field_combo.setToolTip("Field that receives generated audio")
         self.provider_combo = QComboBox(self)
         self.api_key_edit = QLineEdit(self)
         self.api_key_toggle_btn = QPushButton("👁", self)
@@ -68,8 +70,34 @@ class TTSPanel(QWidget):
         self.language_combo = QComboBox(self)
 
         cfg = get_config()
-        self.overwrite_chk = QCheckBox("Overwrite audio (replace target field content)", self)
+        self.overwrite_chk = QCheckBox("Replace existing audio", self)
+        self.overwrite_chk.setToolTip("Replace existing content in the target field")
         self.overwrite_chk.setChecked(bool(cfg.get("batch", {}).get("overwrite", False)))
+
+        try:
+            expanding = QSizePolicy.Policy.Expanding
+            fixed = QSizePolicy.Policy.Fixed
+            compact_combo = QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        except Exception:
+            expanding = QSizePolicy.Expanding
+            fixed = QSizePolicy.Fixed
+            compact_combo = QComboBox.AdjustToMinimumContentsLengthWithIcon
+        for combo in (
+            self.deck_combo,
+            self.model_combo,
+            self.source_field_combo,
+            self.target_field_combo,
+            self.provider_combo,
+            self.tts_model_combo,
+            self.voice_combo,
+            self.language_combo,
+        ):
+            combo.setSizeAdjustPolicy(compact_combo)
+            combo.setMinimumContentsLength(8)
+            combo.setMinimumWidth(0)
+            combo.setSizePolicy(expanding, fixed)
+        self.api_key_edit.setMinimumWidth(0)
+        self.api_key_edit.setSizePolicy(expanding, fixed)
 
         # Buttons
         self.process_btn = QPushButton("Process", self)
@@ -96,9 +124,9 @@ class TTSPanel(QWidget):
         settings.addWidget(self.deck_combo, 0, 1)
         settings.addWidget(QLabel("Note type:"), 0, 2)
         settings.addWidget(self.model_combo, 0, 3)
-        settings.addWidget(QLabel("Source field (text → API):"), 1, 0)
+        settings.addWidget(QLabel("Source field:"), 1, 0)
         settings.addWidget(self.source_field_combo, 1, 1)
-        settings.addWidget(QLabel("Target field (will get audio):"), 1, 2)
+        settings.addWidget(QLabel("Target field:"), 1, 2)
         settings.addWidget(self.target_field_combo, 1, 3)
         settings.addWidget(QLabel("Provider:"), 2, 0)
         settings.addWidget(self.provider_combo, 2, 1)
@@ -109,6 +137,8 @@ class TTSPanel(QWidget):
         api_key_layout.addWidget(self.api_key_edit)
         api_key_layout.addWidget(self.api_key_toggle_btn)
         api_key_widget.setLayout(api_key_layout)
+        api_key_widget.setMinimumWidth(0)
+        api_key_widget.setSizePolicy(expanding, fixed)
         settings.addWidget(QLabel("API key:"), 2, 2)
         settings.addWidget(api_key_widget, 2, 3)
         settings.addWidget(QLabel("TTS model:"), 3, 0)
