@@ -10,6 +10,7 @@ import io
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 import wave
 
 PROVIDER_ALIASES = {
@@ -33,14 +34,15 @@ def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]]
     """
     if importlib.util.find_spec("requests"):
         import requests
-        try:
-            with requests.get(url, stream=True, timeout=120) as r:
-                if int(r.status_code) != 200:
-                    return None, f"HTTP {r.status_code}"
-                total = int(r.headers.get("Content-Length") or 0)
+
+        def download(get):
+            with get(url, stream=True, timeout=120) as response:
+                if int(response.status_code) != 200:
+                    return None, f"HTTP {response.status_code}"
+                total = int(response.headers.get("Content-Length") or 0)
                 chunks = []
                 downloaded = 0
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=8192):
                     if not chunk:
                         continue
                     chunks.append(chunk)
@@ -52,8 +54,20 @@ def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]]
                 if on_progress and total:
                     on_progress(100)
                 return data, None
-        except Exception as e:
-            return None, f"{e}"
+
+        try:
+            return download(requests.get)
+        except requests.exceptions.ProxyError:
+            try:
+                with requests.Session() as session:
+                    session.trust_env = False
+                    return download(session.get)
+            except Exception as exc:
+                host = urllib.parse.urlsplit(url).hostname or "audio host"
+                return None, f"Direct connection to {host} failed ({type(exc).__name__})"
+        except Exception as exc:
+            host = urllib.parse.urlsplit(url).hostname or "audio host"
+            return None, f"Connection to {host} failed ({type(exc).__name__})"
     try:
         with urllib.request.urlopen(url, timeout=120) as resp:
             if int(resp.status) != 200:
