@@ -77,6 +77,27 @@ class UpdateNoteTests(unittest.TestCase):
         self.mw.col.update_note.assert_called_once_with(note)
         note.flush.assert_not_called()
 
+    def test_notifies_open_windows_about_the_change(self):
+        note = MagicMock()
+        changes = object()
+        initiator = object()
+        self.mw.col.update_note.return_value = changes
+        hooks = types.SimpleNamespace(operation_did_execute=MagicMock())
+
+        with patch.object(sys.modules["aqt"], "gui_hooks", hooks, create=True):
+            media_utils.update_note(note, initiator=initiator)
+
+        hooks.operation_did_execute.assert_called_once_with(changes, initiator)
+
+    def test_old_anki_without_changes_skips_notification(self):
+        self.mw.col.update_note.return_value = None
+        hooks = types.SimpleNamespace(operation_did_execute=MagicMock())
+
+        with patch.object(sys.modules["aqt"], "gui_hooks", hooks, create=True):
+            media_utils.update_note(MagicMock())
+
+        hooks.operation_did_execute.assert_not_called()
+
     def test_falls_back_to_flush(self):
         self.mw.col.update_note.side_effect = AttributeError("old Anki")
         note = MagicMock()

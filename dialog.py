@@ -31,6 +31,7 @@ from .tts_provider import (
     LOCAL_PROVIDER_LABELS,
     is_local_provider,
     normalize_base_url,
+    resolve_api_key,
     resolve_base_url,
     synthesize_tts_bytes,
 )
@@ -624,20 +625,7 @@ class TTSPanel(QWidget):
 
     def _resolve_provider_api_key(self, cfg_tts: dict, provider: str) -> str:
         """Resolve API key for selected provider from config."""
-        if not isinstance(cfg_tts, dict):
-            return ""
-
-        api_keys = cfg_tts.get("api_keys")
-        if isinstance(api_keys, dict):
-            provider_key = (provider or "").strip().lower()
-            for key, value in api_keys.items():
-                if (str(key).strip().lower() == provider_key) and isinstance(value, str) and value.strip():
-                    return value.strip()
-
-        fallback = cfg_tts.get("api_key")
-        if isinstance(fallback, str):
-            return fallback.strip()
-        return ""
+        return resolve_api_key(cfg_tts, provider)
 
     def _load_api_key_for_provider(self):
         """Load API key for selected provider into the input field."""
@@ -696,7 +684,9 @@ class TTSPanel(QWidget):
             return
         api_keys = tts_cfg.setdefault("api_keys", {})
         api_keys[provider] = api_key
-        tts_cfg["api_key"] = api_key
+        # Keys are per provider now; drop the shared legacy key so it can't
+        # leak into providers that have no key of their own.
+        tts_cfg.pop("api_key", None)
         write_raw_config(cfg)
         self._refresh_catalog_if_stale()
 
@@ -930,7 +920,7 @@ class TTSPanel(QWidget):
                             sep = cfg.get("append_separator") or " "
                             new_val = cur_val if tag in cur_val else (cur_val + (sep if cur_val.strip() else "") + tag)
                         note[dst] = new_val
-                        update_note(note)
+                        update_note(note, initiator=self)
                     except Exception as e:
                         status, err = "error", f"write failed: {e}"
                     else:
