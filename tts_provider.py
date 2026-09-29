@@ -18,18 +18,16 @@ PROVIDER_ALIASES = {
     "openai": ("openai", "chatgpt"),
     "elevenlabs": ("elevenlabs", "11labs", "eleven_labs"),
     "gemini": ("gemini", "google", "googleai", "google_ai", "google-ai"),
-    "lmstudio": ("lmstudio", "lm_studio", "lm-studio"),
-    "ollama": ("ollama",),
+    # LM Studio / Ollama entries from earlier versions map to the local server.
+    "local": ("local", "local_tts", "lmstudio", "lm_studio", "lm-studio", "ollama"),
 }
 
 # Local servers that speak the OpenAI-compatible /v1/audio/speech API.
 LOCAL_PROVIDER_BASE_URLS = {
-    "lmstudio": "http://localhost:1234/v1",
-    "ollama": "http://localhost:11434/v1",
+    "local": "http://localhost:8000/v1",  # mlx_audio.server default port
 }
 LOCAL_PROVIDER_LABELS = {
-    "lmstudio": "LM Studio",
-    "ollama": "Ollama",
+    "local": "Local TTS server",
 }
 LOCAL_TTS_TIMEOUT = 300
 
@@ -378,11 +376,11 @@ def _synthesize_local_tts(text: str, tts: dict, provider: str) -> Tuple[Optional
         return data, None
     if err.startswith(("HTTP 404", "HTTP 405")):
         return None, (
-            f"{label} server at {base_url} has no /audio/speech endpoint ({err.split(':')[0]}). "
+            f"{label} at {base_url} has no /audio/speech endpoint ({err.split(':')[0]}). "
             "Point Server URL to an OpenAI-compatible TTS server."
         )
     if not err.startswith("HTTP "):
-        return None, f"Cannot reach {label} server at {base_url}: {err}"
+        return None, f"Cannot reach {label} at {base_url}: {err}"
     return None, err
 
 
