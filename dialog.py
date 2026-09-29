@@ -930,7 +930,7 @@ class TTSPanel(QWidget):
                             sep = cfg.get("append_separator") or " "
                             new_val = cur_val if tag in cur_val else (cur_val + (sep if cur_val.strip() else "") + tag)
                         note[dst] = new_val
-                        update_note(note)
+                        update_note(note, initiator=self)
                     except Exception as e:
                         status, err = "error", f"write failed: {e}"
                     else:

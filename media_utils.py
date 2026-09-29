@@ -38,16 +38,35 @@ def add_media_bytes(preferred_name: str, data: bytes) -> Optional[str]:
                 pass
 
 
-def update_note(note):
+def update_note(note, initiator=None):
     """Update a note in the collection, compatible with different Anki versions.
 
     Args:
         note: The note to update
+        initiator: Object passed to the change hook as the change's source
     """
     try:
-        mw.col.update_note(note)
+        changes = mw.col.update_note(note)
     except Exception:
         try:
             note.flush()
         except Exception:
             pass
+        return
+    notify_note_changed(changes, initiator)
+
+
+def notify_note_changed(changes, initiator=None) -> None:
+    """Tell open windows that a note changed, like Anki's own note operations do.
+
+    Without this the Browser editor, its preview and the reviewer keep showing
+    the old note, and the editor may later save that stale copy back.
+    """
+    if changes is None:
+        return
+    try:
+        from aqt import gui_hooks
+
+        gui_hooks.operation_did_execute(changes, initiator)
+    except Exception:
+        pass
