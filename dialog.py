@@ -587,7 +587,7 @@ class TTSPanel(QWidget):
             self.provider_combo.addItem("11 Labs", "elevenlabs")
             self.provider_combo.addItem("Gemini (Google AI)", "gemini")
             for provider, label in LOCAL_PROVIDER_LABELS.items():
-                self.provider_combo.addItem(f"{label} (local)", provider)
+                self.provider_combo.addItem(label, provider)
 
             cfg = get_config()
             current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")

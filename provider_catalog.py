@@ -13,7 +13,7 @@ import urllib.request
 Catalog = Dict[str, List[Any]]
 
 
-LOCAL_PROVIDERS = ("lmstudio", "ollama")
+LOCAL_PROVIDERS = ("local",)
 
 
 def _get_json(
@@ -131,7 +131,7 @@ def _local_voice_entries(payload: Any) -> List[Dict[str, str]]:
 
 
 def _fetch_local(base_url: str, api_key: str) -> Tuple[Optional[Catalog], Optional[str]]:
-    """List models served by a local OpenAI-compatible server (LM Studio, Ollama)."""
+    """List models served by a local OpenAI-compatible TTS server."""
     base_url = (base_url or "").strip().rstrip("/")
     if not base_url:
         return None, "Server URL is required"

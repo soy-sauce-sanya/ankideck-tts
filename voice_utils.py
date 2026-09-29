@@ -150,8 +150,7 @@ PROVIDER_MODELS = {
     "elevenlabs": ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_flash_v2_5", "eleven_ttv_v3", "eleven_v3"],
     "gemini": ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"],
     # Local servers: models and voices come from the running server's catalog.
-    "lmstudio": [],
-    "ollama": [],
+    "local": [],
 }
 
 
@@ -187,7 +186,7 @@ def get_provider_voices_and_languages(provider: str) -> Tuple[List[Dict[str, str
         return ELEVENLABS_VOICES, []
     elif provider == "gemini":
         return GEMINI_VOICES, []
-    elif provider in ("lmstudio", "ollama"):
+    elif provider == "local":
         return [], []
     return get_voices_and_languages()
 

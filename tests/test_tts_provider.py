@@ -406,8 +406,7 @@ class DashScopeTtsTests(unittest.TestCase):
 
 class LocalProviderTests(unittest.TestCase):
     def test_base_url_defaults_and_normalization(self):
-        self.assertEqual(tts_provider.resolve_base_url({}, "lmstudio"), "http://localhost:1234/v1")
-        self.assertEqual(tts_provider.resolve_base_url({}, "ollama"), "http://localhost:11434/v1")
+        self.assertEqual(tts_provider.resolve_base_url({}, "local"), "http://localhost:8000/v1")
         self.assertEqual(tts_provider.normalize_base_url("192.168.1.5:8880/"), "http://192.168.1.5:8880/v1")
         self.assertEqual(tts_provider.normalize_base_url("http://host:5005/v1/"), "http://host:5005/v1")
 
@@ -415,12 +414,12 @@ class LocalProviderTests(unittest.TestCase):
     def test_local_synthesis_uses_openai_speech_api_without_cloud_key(self, post):
         post.return_value = (b"RIFF", None)
         cfg = {"tts": {
-            "provider": "ollama",
+            "provider": "local",
             "api_key": "cloud-secret",
-            "base_urls": {"ollama": "http://localhost:11434/v1"},
-            "models": {"ollama": "orpheus"},
-            "voices": {"ollama": "tara"},
-            "exts": {"ollama": "wav"},
+            "base_urls": {"local": "http://localhost:8000/v1"},
+            "models": {"local": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"},
+            "voices": {"local": "Vivian"},
+            "exts": {"local": "wav"},
         }}
 
         data, error = tts_provider.synthesize_tts_bytes("hello", cfg)
@@ -428,24 +427,29 @@ class LocalProviderTests(unittest.TestCase):
         self.assertEqual(data, b"RIFF")
         self.assertIsNone(error)
         url, headers, payload = post.call_args.args
-        self.assertEqual(url, "http://localhost:11434/v1/audio/speech")
+        self.assertEqual(url, "http://localhost:8000/v1/audio/speech")
         self.assertNotIn("Authorization", headers)
-        self.assertEqual(payload, {"model": "orpheus", "input": "hello", "response_format": "wav", "voice": "tara"})
+        self.assertEqual(payload, {
+            "model": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit",
+            "input": "hello",
+            "response_format": "wav",
+            "voice": "Vivian",
+        })
         self.assertFalse(post.call_args.kwargs["use_env_proxy"])
 
     @patch("tts_provider._post_json_for_bytes")
     def test_local_server_without_speech_endpoint_explains_error(self, post):
         post.return_value = (None, "HTTP 404: Unexpected endpoint")
-        cfg = {"tts": {"provider": "lmstudio", "models": {"lmstudio": "some-model"}}}
+        cfg = {"tts": {"provider": "local", "models": {"local": "some-model"}}}
 
         data, error = tts_provider.synthesize_tts_bytes("hello", cfg)
 
         self.assertIsNone(data)
-        self.assertIn("LM Studio", error)
+        self.assertIn("Local TTS server", error)
         self.assertIn("/audio/speech", error)
 
     def test_local_synthesis_requires_model(self):
-        data, error = tts_provider.synthesize_tts_bytes("hello", {"tts": {"provider": "lmstudio"}})
+        data, error = tts_provider.synthesize_tts_bytes("hello", {"tts": {"provider": "local"}})
 
         self.assertIsNone(data)
         self.assertIn("model", error)

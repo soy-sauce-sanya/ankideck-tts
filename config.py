@@ -14,12 +14,10 @@ DEFAULT_CONFIG = {
             "openai": "",
             "elevenlabs": "",
             "gemini": "",
-            "lmstudio": "",
-            "ollama": ""
+            "local": ""
         },
         "base_urls": {
-            "lmstudio": "http://localhost:1234/v1",
-            "ollama": "http://localhost:11434/v1"
+            "local": "http://localhost:8000/v1"
         },
         "model": "qwen3-tts-flash",
         "voice": "Ethan",
@@ -30,24 +28,21 @@ DEFAULT_CONFIG = {
             "openai": "gpt-4o-mini-tts",
             "elevenlabs": "eleven_multilingual_v2",
             "gemini": "gemini-3.1-flash-tts-preview",
-            "lmstudio": "",
-            "ollama": ""
+            "local": ""
         },
         "voices": {
             "dashscope": "Ethan",
             "openai": "alloy",
             "elevenlabs": "21m00Tcm4TlvDq8ikWAM",
             "gemini": "Kore",
-            "lmstudio": "",
-            "ollama": ""
+            "local": ""
         },
         "exts": {
             "dashscope": "wav",
             "openai": "mp3",
             "elevenlabs": "mp3",
             "gemini": "wav",
-            "lmstudio": "wav",
-            "ollama": "wav"
+            "local": "wav"
         }
     },
     "write_mode": "append",
@@ -114,15 +109,46 @@ def write_raw_config(cfg: dict) -> None:
     mw.addonManager.writeConfig(_addon_config_key(), cfg if isinstance(cfg, dict) else {})
 
 
+LEGACY_LOCAL_PROVIDERS = ("lmstudio", "ollama")
+PER_PROVIDER_MAPS = ("api_keys", "base_urls", "models", "voices", "exts")
+# Former defaults: they point at LM Studio / Ollama chat servers, not at a TTS server.
+LEGACY_DEFAULT_BASE_URLS = ("http://localhost:1234/v1", "http://localhost:11434/v1")
+
+
+def _migrate_local_provider(user_tts: dict) -> dict:
+    """Move settings of the former LM Studio / Ollama providers to "local"."""
+    tts = dict(user_tts)
+    provider = str(tts.get("provider") or "").strip().lower()
+    legacy = [provider] if provider in LEGACY_LOCAL_PROVIDERS else []
+    legacy += [name for name in LEGACY_LOCAL_PROVIDERS if name not in legacy]
+    if provider in LEGACY_LOCAL_PROVIDERS:
+        tts["provider"] = "local"
+    for key in PER_PROVIDER_MAPS:
+        mapping = tts.get(key)
+        if not isinstance(mapping, dict) or mapping.get("local"):
+            continue
+        for name in legacy:
+            value = mapping.get(name)
+            if key == "base_urls" and value in LEGACY_DEFAULT_BASE_URLS:
+                continue
+            if value:
+                mapping = dict(mapping)
+                mapping["local"] = mapping[name]
+                tts[key] = mapping
+                break
+    return tts
+
+
 def get_config():
     """Get merged configuration from addon config and defaults."""
     cfg = get_raw_config()
     merged = dict(DEFAULT_CONFIG)
 
     user_tts = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
+    user_tts = _migrate_local_provider(user_tts)
     merged_tts = dict(DEFAULT_CONFIG.get("tts", {}))
     for key, value in user_tts.items():
-        if key in ("api_keys", "base_urls", "models", "voices", "exts"):
+        if key in PER_PROVIDER_MAPS:
             base_map = DEFAULT_CONFIG.get("tts", {}).get(key, {})
             merged_map = dict(base_map) if isinstance(base_map, dict) else {}
             if isinstance(value, dict):
