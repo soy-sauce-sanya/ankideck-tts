@@ -322,18 +322,79 @@ class GeminiRetryTests(unittest.TestCase):
         self.assertIn("Failed to decode Gemini audio payload", error)
 
 
-class DashScopeDownloadTests(unittest.TestCase):
-    def test_download_error_is_prefixed(self):
-        response = SimpleNamespace(status_code=200, output={"audio": {"url": "https://audio.example/a.wav"}})
-        fake_dashscope = SimpleNamespace(
-            audio=SimpleNamespace(qwen_tts=SimpleNamespace(
-                SpeechSynthesizer=SimpleNamespace(call=lambda **_kwargs: response)
-            ))
+class DashScopeTtsTests(unittest.TestCase):
+    AUDIO_RESPONSE = {"output": {"audio": {"url": "https://audio.example/a.wav"}}}
+
+    @patch("tts_provider.http_get_bytes_stream", return_value=(b"audio", None))
+    @patch("tts_provider._post_json")
+    def test_calls_rest_api_and_downloads_audio(self, post_json, download):
+        post_json.return_value = (self.AUDIO_RESPONSE, None)
+        tts = {"models": {"dashscope": "qwen3-tts-flash"}, "voices": {"dashscope": "Ethan"}, "language_type": "English"}
+
+        data, error = tts_provider._synthesize_dashscope_tts("hello", tts, "key")
+
+        self.assertEqual(data, b"audio")
+        self.assertIsNone(error)
+        url, headers, payload = post_json.call_args.args
+        self.assertEqual(url, "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+        self.assertEqual(headers["Authorization"], "Bearer key")
+        self.assertEqual(payload, {
+            "model": "qwen3-tts-flash",
+            "input": {"text": "hello", "voice": "Ethan", "language_type": "English"},
+        })
+        download.assert_called_once_with("https://audio.example/a.wav", on_progress=None)
+
+    @patch("tts_provider.http_get_bytes_stream", return_value=(b"audio", None))
+    @patch("tts_provider._post_json")
+    def test_custom_base_url_is_used(self, post_json, _download):
+        post_json.return_value = (self.AUDIO_RESPONSE, None)
+
+        tts_provider._synthesize_dashscope_tts("hi", {"dashscope_base_url": "https://dashscope-intl.aliyuncs.com/"}, "key")
+
+        self.assertEqual(
+            post_json.call_args.args[0],
+            "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
         )
 
-        with patch.object(tts_provider.importlib.util, "find_spec", return_value=True), patch.dict(
-            sys.modules, {"dashscope": fake_dashscope}
-        ), patch.object(
+    @patch("tts_provider.http_get_bytes_stream", return_value=(b"audio", None))
+    @patch("tts_provider._post_json")
+    def test_audio_url_in_choices_is_supported(self, post_json, download):
+        post_json.return_value = ({"output": {"choices": [
+            {"message": {"content": [{"text": "x"}, {"audio": "https://audio.example/b.wav"}]}}
+        ]}}, None)
+
+        data, error = tts_provider._synthesize_dashscope_tts("hi", {}, "key")
+
+        self.assertEqual(data, b"audio")
+        self.assertIsNone(error)
+        download.assert_called_once_with("https://audio.example/b.wav", on_progress=None)
+
+    @patch("tts_provider._post_json", return_value=(None, "HTTP 401: InvalidApiKey"))
+    def test_http_error_is_prefixed(self, _post_json):
+        data, error = tts_provider._synthesize_dashscope_tts("hi", {}, "bad")
+
+        self.assertIsNone(data)
+        self.assertEqual(error, "DashScope error: HTTP 401: InvalidApiKey")
+
+    @patch("tts_provider._post_json", return_value=({"code": "DataInspectionFailed", "message": "bad input"}, None))
+    def test_api_error_code_is_reported(self, _post_json):
+        data, error = tts_provider._synthesize_dashscope_tts("hi", {}, "key")
+
+        self.assertIsNone(data)
+        self.assertEqual(error, "DashScope API error (DataInspectionFailed): bad input")
+
+    @patch("tts_provider._post_json", return_value=({"output": {}}, None))
+    def test_missing_audio_url_is_reported(self, _post_json):
+        data, error = tts_provider._synthesize_dashscope_tts("hi", {}, "key")
+
+        self.assertIsNone(data)
+        self.assertEqual(error, "Audio URL not found in API response.")
+
+    @patch("tts_provider._post_json")
+    def test_download_error_is_prefixed(self, post_json):
+        post_json.return_value = (self.AUDIO_RESPONSE, None)
+
+        with patch.object(
             tts_provider, "http_get_bytes_stream", return_value=(None, "Direct connection to audio.example failed (ConnectTimeout)")
         ) as download:
             data, error = tts_provider._synthesize_dashscope_tts("你好", {}, "key")

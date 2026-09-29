@@ -16,6 +16,8 @@ Supported keys:
 - `tts.api_keys.gemini`
 - `tts.api_keys.lmstudio`, `tts.api_keys.ollama` (optional, only if your local server requires one)
 
+DashScope (Qwen TTS) is called over its REST API directly, so no extra Python package is required. The default endpoint is `https://dashscope.aliyuncs.com` (mainland China accounts); for international accounts set `tts.dashscope_base_url` to `https://dashscope-intl.aliyuncs.com`.
+
 Gemini TTS uses the Google Gemini API with preview TTS models and saves audio as `.wav`.
 
 ## Local models (LM Studio / Ollama)
