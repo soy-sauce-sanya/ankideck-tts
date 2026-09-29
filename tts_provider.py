@@ -252,7 +252,7 @@ def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional
         "model": model,
         "voice": voice,
         "input": text,
-        "format": response_format,
+        "response_format": response_format,
     }
     return _post_json_for_bytes("https://api.openai.com/v1/audio/speech", headers, payload)
 

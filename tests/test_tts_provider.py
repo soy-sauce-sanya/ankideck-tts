@@ -77,5 +77,20 @@ class TtsDownloadTests(unittest.TestCase):
         self.assertNotIn("secret", error)
 
 
+class OpenAiTtsTests(unittest.TestCase):
+    def test_payload_uses_response_format_from_configured_ext(self):
+        tts = {"exts": {"openai": "wav"}}
+
+        with patch.object(tts_provider, "_post_json_for_bytes", return_value=(b"audio", None)) as post:
+            data, error = tts_provider._synthesize_openai_tts("hello", tts, "sk-test")
+
+        self.assertEqual(data, b"audio")
+        self.assertIsNone(error)
+        url, _headers, payload = post.call_args.args
+        self.assertEqual(url, "https://api.openai.com/v1/audio/speech")
+        self.assertEqual(payload["response_format"], "wav")
+        self.assertNotIn("format", payload)
+
+
 if __name__ == "__main__":
     unittest.main()
