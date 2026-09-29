@@ -466,5 +466,34 @@ class OpenAiTtsTests(unittest.TestCase):
         self.assertNotIn("format", payload)
 
 
+class ApiKeyResolutionTests(unittest.TestCase):
+    def test_provider_without_key_does_not_inherit_another_providers_key(self):
+        tts = {"api_key": "qwen-key", "api_keys": {"dashscope": "qwen-key", "openai": ""}}
+
+        self.assertEqual(tts_provider.resolve_api_key(tts, "dashscope"), "qwen-key")
+        self.assertEqual(tts_provider.resolve_api_key(tts, "openai"), "")
+        self.assertEqual(tts_provider.resolve_api_key(tts, "gemini"), "")
+
+    def test_provider_aliases_are_matched(self):
+        tts = {"api_keys": {"11labs": " eleven-key "}}
+
+        self.assertEqual(tts_provider.resolve_api_key(tts, "elevenlabs"), "eleven-key")
+
+    def test_legacy_single_key_is_used_only_without_per_provider_keys(self):
+        legacy = {"api_key": "old-key", "api_keys": {"dashscope": "", "openai": ""}}
+
+        self.assertEqual(tts_provider.resolve_api_key(legacy, "openai"), "old-key")
+
+    @patch("tts_provider._post_json_for_bytes")
+    def test_synthesis_without_provider_key_fails_instead_of_using_other_key(self, post):
+        cfg = {"tts": {"provider": "openai", "api_key": "qwen-key", "api_keys": {"dashscope": "qwen-key"}}}
+
+        data, error = tts_provider.synthesize_tts_bytes("hello", cfg)
+
+        self.assertIsNone(data)
+        self.assertIn("No API key is set for openai", error)
+        post.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

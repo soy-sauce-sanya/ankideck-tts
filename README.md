@@ -8,13 +8,16 @@ English UI, queue per-row progress, sequential processing.
 Set provider keys in Anki via:
 `Tools -> Add-ons -> AnkiDeck TTS -> Config`
 
+Each provider has its own key; a provider without a key never borrows another provider's key.
+
 Supported keys:
-- `tts.api_key` (global fallback)
 - `tts.api_keys.dashscope`
 - `tts.api_keys.openai`
 - `tts.api_keys.elevenlabs`
 - `tts.api_keys.gemini`
 - `tts.api_keys.lmstudio`, `tts.api_keys.ollama` (optional, only if your local server requires one)
+
+The legacy single `tts.api_key` is only used by old configs that have no per-provider keys, and is removed once a key is saved from the panel.
 
 DashScope (Qwen TTS) is called over its REST API directly, so no extra Python package is required. The default endpoint is `https://dashscope.aliyuncs.com` (mainland China accounts); for international accounts set `tts.dashscope_base_url` to `https://dashscope-intl.aliyuncs.com`.
 

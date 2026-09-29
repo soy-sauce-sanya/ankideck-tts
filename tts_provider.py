@@ -194,21 +194,32 @@ def resolve_base_url(tts: dict, provider: str) -> str:
     return LOCAL_PROVIDER_BASE_URLS.get(provider, "")
 
 
-def _resolve_api_key(tts: dict, provider: str) -> str:
+def resolve_api_key(tts: dict, provider: str) -> str:
+    """Return the API key saved for this provider.
+
+    Keys are never shared between providers. The single legacy ``api_key`` field
+    is used only by old configs that have no per-provider keys at all.
+    """
+    if not isinstance(tts, dict):
+        return ""
     provider_key = _normalize_provider(provider)
     candidates = PROVIDER_ALIASES.get(provider_key, (provider_key,))
 
     api_keys = tts.get("api_keys")
+    has_provider_keys = False
     if isinstance(api_keys, dict):
-        normalized_api_keys = {
-            (str(k).strip().lower() if k is not None else ""): v
-            for k, v in api_keys.items()
-        }
+        normalized_api_keys = {}
+        for k, v in api_keys.items():
+            if isinstance(v, str) and v.strip():
+                normalized_api_keys[str(k).strip().lower() if k is not None else ""] = v.strip()
+        has_provider_keys = bool(normalized_api_keys)
         for candidate in candidates:
             api_key = normalized_api_keys.get(candidate)
-            if isinstance(api_key, str) and api_key.strip():
-                return api_key.strip()
+            if api_key:
+                return api_key
 
+    if has_provider_keys:
+        return ""
     for key_name in ("api_key", "apiKey", "apikey"):
         api_key = tts.get(key_name)
         if isinstance(api_key, str) and api_key.strip():
@@ -242,10 +253,10 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     if is_local_provider(provider):
         return _synthesize_local_tts(text, tts, provider)
 
-    api_key = _resolve_api_key(tts, provider) or _resolve_api_key(cfg, provider)
+    api_key = resolve_api_key(tts, provider) or resolve_api_key(cfg, provider)
 
     if not api_key:
-        return None, "API key (tts.api_key or tts.api_keys.<provider>) is not set in add-on config."
+        return None, f"No API key is set for {provider}. Enter it in the API key field (tts.api_keys.{provider})."
 
     if provider == "openai":
         return _synthesize_openai_tts(text, tts, api_key)
@@ -278,8 +289,6 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
     model = _resolve_tts_setting(tts, "dashscope", "model", "qwen3-tts-flash")
     voice = _resolve_tts_setting(tts, "dashscope", "voice", "Cherry")
     lang = tts.get("language_type") or "Chinese"
-    api_key = api_key or tts.get("api_key") or ""
-
     base_url = (tts.get("dashscope_base_url") or "https://dashscope.aliyuncs.com").rstrip("/")
     url = f"{base_url}/api/v1/services/aigc/multimodal-generation/generation"
     headers = {
@@ -315,7 +324,6 @@ def _synthesize_dashscope_tts(text: str, tts: dict, api_key: str, on_download_pr
 
 
 def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
-    api_key = api_key or tts.get("api_key") or ""
     model = _resolve_tts_setting(tts, "openai", "model", "gpt-4o-mini-tts")
     voice = _resolve_tts_setting(tts, "openai", "voice", "alloy")
     response_format = tts.get("response_format") or _resolve_tts_setting(tts, "openai", "ext", "mp3")
