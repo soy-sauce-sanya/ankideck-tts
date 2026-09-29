@@ -13,7 +13,13 @@ DEFAULT_CONFIG = {
             "dashscope": "",
             "openai": "",
             "elevenlabs": "",
-            "gemini": ""
+            "gemini": "",
+            "lmstudio": "",
+            "ollama": ""
+        },
+        "base_urls": {
+            "lmstudio": "http://localhost:1234/v1",
+            "ollama": "http://localhost:11434/v1"
         },
         "model": "qwen3-tts-flash",
         "voice": "Ethan",
@@ -23,19 +29,25 @@ DEFAULT_CONFIG = {
             "dashscope": "qwen3-tts-flash",
             "openai": "gpt-4o-mini-tts",
             "elevenlabs": "eleven_multilingual_v2",
-            "gemini": "gemini-3.1-flash-tts-preview"
+            "gemini": "gemini-3.1-flash-tts-preview",
+            "lmstudio": "",
+            "ollama": ""
         },
         "voices": {
             "dashscope": "Ethan",
             "openai": "alloy",
             "elevenlabs": "21m00Tcm4TlvDq8ikWAM",
-            "gemini": "Kore"
+            "gemini": "Kore",
+            "lmstudio": "",
+            "ollama": ""
         },
         "exts": {
             "dashscope": "wav",
             "openai": "mp3",
             "elevenlabs": "mp3",
-            "gemini": "wav"
+            "gemini": "wav",
+            "lmstudio": "wav",
+            "ollama": "wav"
         }
     },
     "write_mode": "append",
@@ -110,7 +122,7 @@ def get_config():
     user_tts = cfg.get("tts") if isinstance(cfg.get("tts"), dict) else {}
     merged_tts = dict(DEFAULT_CONFIG.get("tts", {}))
     for key, value in user_tts.items():
-        if key in ("api_keys", "models", "voices", "exts"):
+        if key in ("api_keys", "base_urls", "models", "voices", "exts"):
             base_map = DEFAULT_CONFIG.get("tts", {}).get(key, {})
             merged_map = dict(base_map) if isinstance(base_map, dict) else {}
             if isinstance(value, dict):

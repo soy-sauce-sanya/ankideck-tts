@@ -26,7 +26,14 @@ from .anki_helpers import (
 )
 from .media_utils import add_media_bytes, update_note
 from .provider_catalog import fetch_provider_catalog
-from .tts_provider import synthesize_tts_bytes
+from .tts_provider import (
+    LOCAL_PROVIDER_BASE_URLS,
+    LOCAL_PROVIDER_LABELS,
+    is_local_provider,
+    normalize_base_url,
+    resolve_base_url,
+    synthesize_tts_bytes,
+)
 from .text_utils import strip_html, safe_filename_from_text, render_sound_tag
 from .voice_utils import (
     get_voice_display_name,
@@ -64,6 +71,7 @@ class TTSPanel(QWidget):
         self.target_field_combo.setToolTip("Field that receives generated audio")
         self.provider_combo = QComboBox(self)
         self.api_key_edit = QLineEdit(self)
+        self.api_key_label = QLabel("API key:", self)
         self.api_key_toggle_btn = QPushButton("👁", self)
         self.api_key_toggle_btn.setFixedWidth(32)
         self.api_key_toggle_btn.setCheckable(True)
@@ -159,7 +167,7 @@ class TTSPanel(QWidget):
         api_key_widget.setLayout(api_key_layout)
         api_key_widget.setMinimumWidth(0)
         api_key_widget.setSizePolicy(expanding, fixed)
-        settings.addWidget(QLabel("API key:"), 2, 2)
+        settings.addWidget(self.api_key_label, 2, 2)
         settings.addWidget(api_key_widget, 2, 3)
         settings.addWidget(QLabel("TTS model:"), 3, 0)
         settings.addWidget(self.tts_model_combo, 3, 1)
@@ -258,6 +266,10 @@ class TTSPanel(QWidget):
             return
 
         self.refresh_catalog_btn.setEnabled(True)
+        if is_local_provider(provider):
+            # Local servers are cheap to query and their models change often.
+            self._refresh_catalog()
+            return
         cached = self._cached_catalog(provider)
         updated_at = float(cached.get("updated_at") or 0)
         age = max(0, time.time() - updated_at) if updated_at else None
@@ -280,8 +292,16 @@ class TTSPanel(QWidget):
         if provider == "dashscope":
             self._set_catalog_status("Built-in catalog")
             return
-        api_key = self._resolve_provider_api_key(get_config().get("tts", {}), provider)
-        if not api_key:
+        tts_cfg = get_config().get("tts", {})
+        local = is_local_provider(provider)
+        if local:
+            # Never send the global cloud key to a local server.
+            api_key = str((tts_cfg.get("api_keys") or {}).get(provider) or "").strip()
+            base_url = resolve_base_url(tts_cfg, provider)
+        else:
+            api_key = self._resolve_provider_api_key(tts_cfg, provider)
+            base_url = ""
+        if not api_key and not local:
             self._set_catalog_status("Add API key to refresh")
             return
 
@@ -298,7 +318,7 @@ class TTSPanel(QWidget):
         self._set_catalog_status("Refreshing…")
 
         def background():
-            return fetch_provider_catalog(provider, api_key)
+            return fetch_provider_catalog(provider, api_key, base_url)
 
         def on_done(result_or_future):
             try:
@@ -315,7 +335,10 @@ class TTSPanel(QWidget):
                 current_provider = None
             if error or not catalog:
                 if current_provider == provider:
-                    fallback = "Using saved catalog" if previous else "Refresh failed"
+                    if local:
+                        fallback = "Server offline · saved catalog" if previous else "Server offline"
+                    else:
+                        fallback = "Using saved catalog" if previous else "Refresh failed"
                     self._set_catalog_status(fallback, error or "No catalog returned")
                 return
 
@@ -344,15 +367,20 @@ class TTSPanel(QWidget):
                 "updated_at": time.time(),
                 "models": catalog.get("models", []),
                 "voices": catalog.get("voices", []),
-                "new_models": sorted(new_models - old_models),
-                "new_voices": sorted(new_voices - old_voices),
+                # Local catalogs mirror what is loaded right now; nothing is "new".
+                "new_models": [] if local else sorted(new_models - old_models),
+                "new_voices": [] if local else sorted(new_voices - old_voices),
             }
             write_raw_config(cfg)
 
             if current_provider == provider:
                 self._load_tts_models()
                 self._load_voices_and_languages()
-                self._set_catalog_status(f"{added} new items" if added else "Catalog is current")
+                if local:
+                    count = len(new_models)
+                    self._set_catalog_status(f"{count} model{'s' if count != 1 else ''} on server", base_url)
+                else:
+                    self._set_catalog_status(f"{added} new items" if added else "Catalog is current")
             elif current_provider:
                 self._refresh_catalog_if_stale()
 
@@ -478,7 +506,10 @@ class TTSPanel(QWidget):
                 self.voice_combo.addItem(display_name, voice['english'])
 
             voices_cfg = tts_cfg.get("voices") or {}
-            current_voice = voices_cfg.get(provider) or tts_cfg.get("voice", "Ethan")
+            if provider in voices_cfg:
+                current_voice = voices_cfg.get(provider)
+            else:
+                current_voice = tts_cfg.get("voice", "Ethan")
             selected = False
             for i in range(self.voice_combo.count()):
                 if self.voice_combo.itemData(i) == current_voice:
@@ -490,6 +521,8 @@ class TTSPanel(QWidget):
                 self.voice_combo.setCurrentIndex(self.voice_combo.count() - 1)
         finally:
             self.voice_combo.blockSignals(False)
+        if not current_voice and self.voice_combo.count():
+            self._on_voice_changed()
 
         # Populate language combo box
         self.language_combo.clear()
@@ -522,7 +555,10 @@ class TTSPanel(QWidget):
                 models.append(model)
 
         current_models = tts_cfg.get("models") or {}
-        current_model = current_models.get(provider) or tts_cfg.get("model")
+        if provider in current_models:
+            current_model = current_models.get(provider)
+        else:
+            current_model = tts_cfg.get("model")
         self.tts_model_combo.blockSignals(True)
         try:
             self.tts_model_combo.clear()
@@ -537,6 +573,8 @@ class TTSPanel(QWidget):
                     break
         finally:
             self.tts_model_combo.blockSignals(False)
+        if not current_model and self.tts_model_combo.count():
+            self._on_tts_model_changed()
 
     def _load_providers(self):
         """Load provider options into the combo box."""
@@ -547,6 +585,8 @@ class TTSPanel(QWidget):
             self.provider_combo.addItem("ChatGPT (OpenAI)", "openai")
             self.provider_combo.addItem("11 Labs", "elevenlabs")
             self.provider_combo.addItem("Gemini (Google AI)", "gemini")
+            for provider, label in LOCAL_PROVIDER_LABELS.items():
+                self.provider_combo.addItem(f"{label} (local)", provider)
 
             cfg = get_config()
             current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
@@ -565,14 +605,16 @@ class TTSPanel(QWidget):
         except Exception:
             self.api_key_edit.setEchoMode(QLineEdit.Password)
 
+    @staticmethod
+    def _echo_modes():
+        try:
+            return QLineEdit.EchoMode.Normal, QLineEdit.EchoMode.Password
+        except Exception:
+            return QLineEdit.Normal, QLineEdit.Password
+
     def _toggle_api_key_visibility(self):
         """Toggle API key field between visible and hidden."""
-        try:
-            normal = QLineEdit.EchoMode.Normal
-            password = QLineEdit.EchoMode.Password
-        except Exception:
-            normal = QLineEdit.Normal
-            password = QLineEdit.Password
+        normal, password = self._echo_modes()
         if self.api_key_edit.echoMode() == password:
             self.api_key_edit.setEchoMode(normal)
             self.api_key_toggle_btn.setText("🔒")
@@ -603,6 +645,22 @@ class TTSPanel(QWidget):
         tts_cfg = cfg.get("tts", {})
         provider = self.provider_combo.currentData() or tts_cfg.get("provider", "dashscope")
         provider_label = self.provider_combo.currentText() or provider
+        normal, password = self._echo_modes()
+        if is_local_provider(provider):
+            # Local servers need an address instead of a key.
+            self.api_key_label.setText("Server URL:")
+            self.api_key_toggle_btn.setVisible(False)
+            self.api_key_edit.setEchoMode(normal)
+            self.api_key_edit.setPlaceholderText(LOCAL_PROVIDER_BASE_URLS.get(provider, ""))
+            self.api_key_edit.setToolTip("OpenAI-compatible server that serves /v1/audio/speech")
+            self.api_key_edit.setText(resolve_base_url(tts_cfg, provider))
+            return
+        self.api_key_label.setText("API key:")
+        self.api_key_toggle_btn.setVisible(True)
+        self.api_key_toggle_btn.setChecked(False)
+        self.api_key_toggle_btn.setText("👁")
+        self.api_key_edit.setEchoMode(password)
+        self.api_key_edit.setToolTip("")
         self.api_key_edit.setPlaceholderText(f"Enter {provider_label} API key")
         self.api_key_edit.setText(self._resolve_provider_api_key(tts_cfg, provider))
 
@@ -621,11 +679,21 @@ class TTSPanel(QWidget):
             self._refresh_catalog_if_stale()
 
     def _on_api_key_changed(self):
-        """Persist API key for selected provider."""
+        """Persist API key (or server URL for local providers) for selected provider."""
         provider = self.provider_combo.currentData() or "dashscope"
         api_key = (self.api_key_edit.text() or "").strip()
         cfg = get_raw_config()
         tts_cfg = cfg.setdefault("tts", {})
+        if is_local_provider(provider):
+            base_url = normalize_base_url(api_key) or LOCAL_PROVIDER_BASE_URLS[provider]
+            base_urls = tts_cfg.setdefault("base_urls", {})
+            if base_urls.get(provider) == base_url:
+                return
+            base_urls[provider] = base_url
+            write_raw_config(cfg)
+            self.api_key_edit.setText(base_url)
+            self._refresh_catalog_if_stale()
+            return
         api_keys = tts_cfg.setdefault("api_keys", {})
         api_keys[provider] = api_key
         tts_cfg["api_key"] = api_key

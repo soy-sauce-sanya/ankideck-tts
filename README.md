@@ -14,8 +14,19 @@ Supported keys:
 - `tts.api_keys.openai`
 - `tts.api_keys.elevenlabs`
 - `tts.api_keys.gemini`
+- `tts.api_keys.lmstudio`, `tts.api_keys.ollama` (optional, only if your local server requires one)
 
 Gemini TTS uses the Google Gemini API with preview TTS models and saves audio as `.wav`.
+
+## Local models (LM Studio / Ollama)
+
+Choose **LM Studio (local)** or **Ollama (local)** as the provider. No API key is needed; the API key field becomes **Server URL** (defaults: `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama). A bare `host:port` is accepted and `/v1` is added automatically.
+
+The add-on sends OpenAI-compatible requests to `<Server URL>/audio/speech` with `model`, `input`, `voice` (if set) and `response_format` (default `wav`, see `tts.exts`). Local requests bypass system proxies and time out after 5 minutes.
+
+LM Studio and Ollama do not synthesize speech on their own, so the server at this URL must expose `/v1/audio/speech` — for example a TTS bridge such as Orpheus-FastAPI (which can use a model loaded in LM Studio or Ollama as its backend) or Kokoro-FastAPI. If the endpoint is missing, the queue shows a "no /audio/speech endpoint" error.
+
+Models are listed from `<Server URL>/models` each time the provider is selected (or on `↻`); voices from `<Server URL>/audio/voices` when the server provides it. Both fields also accept any ID typed manually. If the server needs a key, set `tts.api_keys.lmstudio` / `tts.api_keys.ollama` in the add-on config.
 
 ## Provider catalogs
 

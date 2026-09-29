@@ -77,5 +77,67 @@ class TtsDownloadTests(unittest.TestCase):
         self.assertNotIn("secret", error)
 
 
+class LocalProviderTests(unittest.TestCase):
+    def test_base_url_defaults_and_normalization(self):
+        self.assertEqual(tts_provider.resolve_base_url({}, "lmstudio"), "http://localhost:1234/v1")
+        self.assertEqual(tts_provider.resolve_base_url({}, "ollama"), "http://localhost:11434/v1")
+        self.assertEqual(tts_provider.normalize_base_url("192.168.1.5:8880/"), "http://192.168.1.5:8880/v1")
+        self.assertEqual(tts_provider.normalize_base_url("http://host:5005/v1/"), "http://host:5005/v1")
+
+    @patch("tts_provider._post_json_for_bytes")
+    def test_local_synthesis_uses_openai_speech_api_without_cloud_key(self, post):
+        post.return_value = (b"RIFF", None)
+        cfg = {"tts": {
+            "provider": "ollama",
+            "api_key": "cloud-secret",
+            "base_urls": {"ollama": "http://localhost:11434/v1"},
+            "models": {"ollama": "orpheus"},
+            "voices": {"ollama": "tara"},
+            "exts": {"ollama": "wav"},
+        }}
+
+        data, error = tts_provider.synthesize_tts_bytes("hello", cfg)
+
+        self.assertEqual(data, b"RIFF")
+        self.assertIsNone(error)
+        url, headers, payload = post.call_args.args
+        self.assertEqual(url, "http://localhost:11434/v1/audio/speech")
+        self.assertNotIn("Authorization", headers)
+        self.assertEqual(payload, {"model": "orpheus", "input": "hello", "response_format": "wav", "voice": "tara"})
+        self.assertFalse(post.call_args.kwargs["use_env_proxy"])
+
+    @patch("tts_provider._post_json_for_bytes")
+    def test_local_server_without_speech_endpoint_explains_error(self, post):
+        post.return_value = (None, "HTTP 404: Unexpected endpoint")
+        cfg = {"tts": {"provider": "lmstudio", "models": {"lmstudio": "some-model"}}}
+
+        data, error = tts_provider.synthesize_tts_bytes("hello", cfg)
+
+        self.assertIsNone(data)
+        self.assertIn("LM Studio", error)
+        self.assertIn("/audio/speech", error)
+
+    def test_local_synthesis_requires_model(self):
+        data, error = tts_provider.synthesize_tts_bytes("hello", {"tts": {"provider": "lmstudio"}})
+
+        self.assertIsNone(data)
+        self.assertIn("model", error)
+
+
+class OpenAiTtsTests(unittest.TestCase):
+    def test_payload_uses_response_format_from_configured_ext(self):
+        tts = {"exts": {"openai": "wav"}}
+
+        with patch.object(tts_provider, "_post_json_for_bytes", return_value=(b"audio", None)) as post:
+            data, error = tts_provider._synthesize_openai_tts("hello", tts, "sk-test")
+
+        self.assertEqual(data, b"audio")
+        self.assertIsNone(error)
+        url, _headers, payload = post.call_args.args
+        self.assertEqual(url, "https://api.openai.com/v1/audio/speech")
+        self.assertEqual(payload["response_format"], "wav")
+        self.assertNotIn("format", payload)
+
+
 if __name__ == "__main__":
     unittest.main()
