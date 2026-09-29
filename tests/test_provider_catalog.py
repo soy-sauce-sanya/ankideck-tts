@@ -55,6 +55,37 @@ class ProviderCatalogTests(unittest.TestCase):
         self.assertIsNone(catalog)
         self.assertEqual(error, "API key is required")
 
+    @patch("provider_catalog._get_json")
+    def test_local_server_lists_all_models_without_api_key(self, get_json):
+        get_json.side_effect = [
+            ({"data": [{"id": "orpheus-3b"}, {"id": "kokoro"}]}, None),
+            ({"voices": ["af_bella", {"id": "tara", "name": "Tara"}]}, None),
+        ]
+
+        catalog, error = provider_catalog.fetch_provider_catalog("lmstudio", "", "http://localhost:1234/v1")
+
+        self.assertIsNone(error)
+        self.assertEqual(catalog["models"], ["kokoro", "orpheus-3b"])
+        self.assertEqual(catalog["voices"], [
+            {"chinese": "af_bella", "english": "af_bella"},
+            {"chinese": "Tara", "english": "tara"},
+        ])
+        self.assertEqual(get_json.call_args_list[0].args[0], "http://localhost:1234/v1/models")
+        self.assertEqual(get_json.call_args_list[0].args[1], {})
+        self.assertFalse(get_json.call_args_list[0].kwargs["use_env_proxy"])
+
+    @patch("provider_catalog._get_json")
+    def test_local_server_without_voice_list_still_returns_models(self, get_json):
+        get_json.side_effect = [
+            ({"data": [{"id": "llama3"}]}, None),
+            (None, "HTTP 404"),
+        ]
+
+        catalog, error = provider_catalog.fetch_provider_catalog("ollama", "", "http://localhost:11434/v1")
+
+        self.assertIsNone(error)
+        self.assertEqual(catalog, {"models": ["llama3"], "voices": []})
+
 
 if __name__ == "__main__":
     unittest.main()

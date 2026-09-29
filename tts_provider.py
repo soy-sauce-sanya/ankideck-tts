@@ -18,7 +18,20 @@ PROVIDER_ALIASES = {
     "openai": ("openai", "chatgpt"),
     "elevenlabs": ("elevenlabs", "11labs", "eleven_labs"),
     "gemini": ("gemini", "google", "googleai", "google_ai", "google-ai"),
+    "lmstudio": ("lmstudio", "lm_studio", "lm-studio"),
+    "ollama": ("ollama",),
 }
+
+# Local servers that speak the OpenAI-compatible /v1/audio/speech API.
+LOCAL_PROVIDER_BASE_URLS = {
+    "lmstudio": "http://localhost:1234/v1",
+    "ollama": "http://localhost:11434/v1",
+}
+LOCAL_PROVIDER_LABELS = {
+    "lmstudio": "LM Studio",
+    "ollama": "Ollama",
+}
+LOCAL_TTS_TIMEOUT = 300
 
 
 def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]] = None) -> Tuple[Optional[bytes], Optional[str]]:
@@ -80,11 +93,19 @@ def http_get_bytes_stream(url: str, on_progress: Optional[Callable[[int], None]]
         return None, f"{e}"
 
 
-def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> Tuple[Optional[bytes], Optional[str]]:
+def _post_json_for_bytes(
+    url: str,
+    headers: Dict[str, str],
+    payload: Dict[str, Any],
+    timeout: int = 120,
+    use_env_proxy: bool = True,
+) -> Tuple[Optional[bytes], Optional[str]]:
     if importlib.util.find_spec("requests"):
         import requests
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            with requests.Session() as session:
+                session.trust_env = use_env_proxy
+                resp = session.post(url, headers=headers, json=payload, timeout=timeout)
         except Exception as e:
             return None, f"{e}"
         if int(resp.status_code) != 200:
@@ -93,8 +114,9 @@ def _post_json_for_bytes(url: str, headers: Dict[str, str], payload: Dict[str, A
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    opener = urllib.request.build_opener() if use_env_proxy else urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with opener.open(req, timeout=timeout) as resp:
             if int(resp.status) != 200:
                 return None, f"HTTP {resp.status}"
             return resp.read(), None
@@ -144,6 +166,34 @@ def _normalize_provider(provider: str) -> str:
     return provider_key
 
 
+def is_local_provider(provider: str) -> bool:
+    return _normalize_provider(provider) in LOCAL_PROVIDER_BASE_URLS
+
+
+def normalize_base_url(url: str) -> str:
+    """Normalize a server URL, adding the /v1 API prefix when only a host is given."""
+    url = (url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if "://" not in url:
+        url = f"http://{url}"
+    parts = urllib.parse.urlsplit(url)
+    if parts.path in ("", "/"):
+        url = f"{url}/v1"
+    return url
+
+
+def resolve_base_url(tts: dict, provider: str) -> str:
+    """Return the configured server URL for a local provider, or its default."""
+    provider = _normalize_provider(provider)
+    base_urls = tts.get("base_urls") if isinstance(tts, dict) else None
+    if isinstance(base_urls, dict):
+        url = normalize_base_url(str(base_urls.get(provider) or ""))
+        if url:
+            return url
+    return LOCAL_PROVIDER_BASE_URLS.get(provider, "")
+
+
 def _resolve_api_key(tts: dict, provider: str) -> str:
     provider_key = _normalize_provider(provider)
     candidates = PROVIDER_ALIASES.get(provider_key, (provider_key,))
@@ -189,6 +239,9 @@ def synthesize_tts_bytes(text: str, cfg: dict, on_download_progress: Optional[Ca
     """
     tts = cfg.get("tts") or {}
     provider = _normalize_provider(tts.get("provider") or "dashscope")
+    if is_local_provider(provider):
+        return _synthesize_local_tts(text, tts, provider)
+
     api_key = _resolve_api_key(tts, provider) or _resolve_api_key(cfg, provider)
 
     if not api_key:
@@ -255,6 +308,51 @@ def _synthesize_openai_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional
         "format": response_format,
     }
     return _post_json_for_bytes("https://api.openai.com/v1/audio/speech", headers, payload)
+
+
+def _local_provider_api_key(tts: dict, provider: str) -> str:
+    """Only use a key saved for this local server, never the global cloud key."""
+    api_keys = tts.get("api_keys")
+    if isinstance(api_keys, dict):
+        value = api_keys.get(provider)
+        if isinstance(value, str):
+            return value.strip()
+    return ""
+
+
+def _synthesize_local_tts(text: str, tts: dict, provider: str) -> Tuple[Optional[bytes], Optional[str]]:
+    label = LOCAL_PROVIDER_LABELS.get(provider, provider)
+    base_url = resolve_base_url(tts, provider)
+    model = str(_resolve_tts_setting(tts, provider, "model", "") or "").strip()
+    voice = str(_resolve_tts_setting(tts, provider, "voice", "") or "").strip()
+    response_format = str(_resolve_tts_setting(tts, provider, "ext", "wav") or "wav").lstrip(".")
+    if not model:
+        return None, f"Select or enter a {label} model first."
+
+    headers = {"Content-Type": "application/json"}
+    api_key = _local_provider_api_key(tts, provider)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model,
+        "input": text,
+        "response_format": response_format,
+    }
+    if voice:
+        payload["voice"] = voice
+
+    url = f"{base_url}/audio/speech"
+    data, err = _post_json_for_bytes(url, headers, payload, timeout=LOCAL_TTS_TIMEOUT, use_env_proxy=False)
+    if not err:
+        return data, None
+    if err.startswith(("HTTP 404", "HTTP 405")):
+        return None, (
+            f"{label} server at {base_url} has no /audio/speech endpoint ({err.split(':')[0]}). "
+            "Point Server URL to an OpenAI-compatible TTS server."
+        )
+    if not err.startswith("HTTP "):
+        return None, f"Cannot reach {label} server at {base_url}: {err}"
+    return None, err
 
 
 def _synthesize_elevenlabs_tts(text: str, tts: dict, api_key: str) -> Tuple[Optional[bytes], Optional[str]]:
