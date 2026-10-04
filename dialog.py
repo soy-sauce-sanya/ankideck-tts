@@ -587,7 +587,7 @@ class TTSPanel(QWidget):
             self.provider_combo.addItem("11 Labs", "elevenlabs")
             self.provider_combo.addItem("Gemini (Google AI)", "gemini")
             for provider, label in LOCAL_PROVIDER_LABELS.items():
-                self.provider_combo.addItem(f"{label} (local)", provider)
+                self.provider_combo.addItem(label, provider)
 
             cfg = get_config()
             current_provider = (cfg.get("tts", {}) or {}).get("provider", "dashscope")
@@ -947,8 +947,27 @@ class TTSPanel(QWidget):
             res = bg()
             on_done(res)
 
+    def _commit_pending_edits(self):
+        """Save fields that are still being edited.
+
+        Typed values are saved when a field loses focus, but on macOS clicking
+        a button doesn't take focus, so Process would otherwise run with the
+        previously saved model, voice or key.
+        """
+        self._on_tts_model_changed()
+        self._on_voice_changed()
+        tts_cfg = get_config().get("tts", {})
+        provider = self.provider_combo.currentData() or "dashscope"
+        if is_local_provider(provider):
+            saved = resolve_base_url(tts_cfg, provider)
+        else:
+            saved = self._resolve_provider_api_key(tts_cfg, provider)
+        if (self.api_key_edit.text() or "").strip() != saved:
+            self._on_api_key_changed()
+
     def process_notes(self):
         """Process all selected notes, or the current review note."""
+        self._commit_pending_edits()
         nids = selected_note_ids_in_browser()
         if not nids:
             nid = current_reviewer_note_id()

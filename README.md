@@ -15,7 +15,7 @@ Supported keys:
 - `tts.api_keys.openai`
 - `tts.api_keys.elevenlabs`
 - `tts.api_keys.gemini`
-- `tts.api_keys.lmstudio`, `tts.api_keys.ollama` (optional, only if your local server requires one)
+- `tts.api_keys.local` (optional, only if your local TTS server requires one)
 
 The legacy single `tts.api_key` is only used by old configs that have no per-provider keys, and is removed once a key is saved from the panel.
 
@@ -23,15 +23,31 @@ DashScope (Qwen TTS) is called over its REST API directly, so no extra Python pa
 
 Gemini TTS uses the Google Gemini API with preview TTS models and saves audio as `.wav`.
 
-## Local models (LM Studio / Ollama)
+## Local TTS server
 
-Choose **LM Studio (local)** or **Ollama (local)** as the provider. No API key is needed; the API key field becomes **Server URL** (defaults: `http://localhost:1234/v1` for LM Studio, `http://localhost:11434/v1` for Ollama). A bare `host:port` is accepted and `/v1` is added automatically.
+Choose **Local TTS server** as the provider to use any server with an OpenAI-compatible `/v1/audio/speech` endpoint. No API key is needed; the API key field becomes **Server URL** (default `http://localhost:8000/v1`). A bare `host:port` is accepted and `/v1` is added automatically.
 
-The add-on sends OpenAI-compatible requests to `<Server URL>/audio/speech` with `model`, `input`, `voice` (if set) and `response_format` (default `wav`, see `tts.exts`). Local requests bypass system proxies and time out after 5 minutes.
+On Apple Silicon Macs, [mlx-audio](https://github.com/Blaizzy/mlx-audio) runs natively on the GPU:
 
-LM Studio and Ollama do not synthesize speech on their own, so the server at this URL must expose `/v1/audio/speech` — for example a TTS bridge such as Orpheus-FastAPI (which can use a model loaded in LM Studio or Ollama as its backend) or Kokoro-FastAPI. If the endpoint is missing, the queue shows a "no /audio/speech endpoint" error.
+```bash
+python3 -m venv ~/mlx-audio-env
+source ~/mlx-audio-env/bin/activate
+pip install "mlx-audio[server,tts]"
+mlx_audio.server --port 8000
+```
 
-Models are listed from `<Server URL>/models` each time the provider is selected (or on `↻`); voices from `<Server URL>/audio/voices` when the server provides it. Both fields also accept any ID typed manually. If the server needs a key, set `tts.api_keys.lmstudio` / `tts.api_keys.ollama` in the add-on config.
+Models are downloaded on first use, so the first request is slow. Examples:
+
+| Model | Voices |
+|---|---|
+| `mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit` | `Vivian`, `Serena`, `Uncle_Fu`, `Dylan`, `Eric` (Chinese), `Ryan`, `Aiden` (English), `Ono_Anna`, `Sohee`; detects the text language itself |
+| `mlx-community/Kokoro-82M-bf16` | `af_heart`, `af_bella`, … (English) |
+
+Other servers work too, e.g. [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) in Docker (`http://localhost:8880`). LM Studio and Ollama do not synthesize speech themselves, so they cannot be used directly.
+
+The add-on sends `model`, `input`, `voice` (if set) and `response_format` (default `wav`, see `tts.exts.local`). Local requests bypass system proxies and time out after 5 minutes. Models are listed from `<Server URL>/models` and voices from `<Server URL>/audio/voices` when the server provides them; both fields also accept any ID typed manually. If the server needs a key, set `tts.api_keys.local`.
+
+Settings saved for the former **LM Studio (local)** / **Ollama (local)** providers are moved to **Local TTS server** automatically.
 
 ## Provider catalogs
 

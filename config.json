@@ -8,12 +8,10 @@
       "openai": "",
       "elevenlabs": "",
       "gemini": "",
-      "lmstudio": "",
-      "ollama": ""
+      "local": ""
     },
     "base_urls": {
-      "lmstudio": "http://localhost:1234/v1",
-      "ollama": "http://localhost:11434/v1"
+      "local": "http://localhost:8000/v1"
     },
     "model": "qwen3-tts-flash",
     "voice": "Ethan",
@@ -24,24 +22,21 @@
       "openai": "gpt-4o-mini-tts",
       "elevenlabs": "eleven_multilingual_v2",
       "gemini": "gemini-3.1-flash-tts-preview",
-      "lmstudio": "",
-      "ollama": ""
+      "local": ""
     },
     "voices": {
       "dashscope": "Ethan",
       "openai": "alloy",
       "elevenlabs": "21m00Tcm4TlvDq8ikWAM",
       "gemini": "Kore",
-      "lmstudio": "",
-      "ollama": ""
+      "local": ""
     },
     "exts": {
       "dashscope": "wav",
       "openai": "mp3",
       "elevenlabs": "mp3",
       "gemini": "wav",
-      "lmstudio": "wav",
-      "ollama": "wav"
+      "local": "wav"
     }
   },
   "write_mode": "append",
