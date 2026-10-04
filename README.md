@@ -32,7 +32,7 @@ On Apple Silicon Macs, [mlx-audio](https://github.com/Blaizzy/mlx-audio) runs na
 ```bash
 python3 -m venv ~/mlx-audio-env
 source ~/mlx-audio-env/bin/activate
-pip install mlx-audio
+pip install "mlx-audio[server,tts]"
 mlx_audio.server --port 8000
 ```
 
